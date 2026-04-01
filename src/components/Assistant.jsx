@@ -2,38 +2,39 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 
 const STEP_HINTS = {
   1: [
-    "What's the difference between Private Sector and TRS?",
-    "Which pay frequency should I pick?",
-    "What does company type affect?",
+    "What file formats can I upload?",
+    "What if my file has weird formatting?",
+    "What is the SIMRP program?",
   ],
   2: [
-    "What file formats are accepted?",
-    "How do I pick the right header row?",
-    "My census has extra rows at the top — what do I do?",
+    "Why did the AI map these columns?",
+    "What's the difference between Private and TRS?",
+    "What are pre-tax deductions?",
   ],
   3: [
-    "What does each required field mean?",
-    "When should I use 'per-period' for wages?",
-    "What are existing pre-tax deductions?",
+    "Explain the eligibility report",
+    "What does the paycheck comparison show?",
+    "How is the monthly benefit calculated?",
   ],
+  // Adjust mode steps
   4: [
-    "What do the warning flags mean?",
-    "What filing status should I use if it's missing?",
-    "Why does pay type matter?",
-  ],
-  5: [
-    "What's the difference between combined and individual PDFs?",
-    "Explain the eligibility report sections",
-    "What does the raw data export include?",
+    "What does each required field mean?",
+    "When should wages be 'per-period'?",
+    "How do filing status codes work?",
   ],
 };
 
+const STEP_LABELS = {
+  1: 'Upload',
+  2: 'Confirm',
+  3: 'Generate',
+  4: 'Adjusting',
+};
+
 const GREETING_BY_STEP = {
-  1: "I can help you set up the company info. Private vs TRS changes how fees and eligibility work — ask me if you're unsure!",
-  2: "Upload your census file and I'll help you make sense of it. I can also help if the format looks weird.",
-  3: "I see your data — let me help you map the right columns. You can also use the AI Auto-Detect button above for smart mapping.",
-  4: "Review the parsed data below. I can explain any warnings or help you decide on filing statuses.",
-  5: "You're ready to generate! I can explain what each report contains or answer questions about the results.",
+  1: "Upload your census file and I'll analyze it automatically — I'll detect the headers, columns, and data format for you.",
+  2: "I've analyzed your file. Review the auto-detected settings below. If everything looks right, just click 'Looks Good' to generate reports!",
+  3: "Choose your output options and hit Generate. I can explain any part of the results if you have questions.",
 };
 
 export default function Assistant({ step, context }) {
@@ -45,11 +46,12 @@ export default function Assistant({ step, context }) {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Auto-greet on step change
+  // Auto-greet on step change (only for main steps, not adjust sub-steps)
   useEffect(() => {
-    if (!hasSeenStep.has(step)) {
-      setHasSeenStep(prev => new Set([...prev, step]));
-      const greeting = GREETING_BY_STEP[step];
+    const greetStep = step <= 3 ? step : null;
+    if (greetStep && !hasSeenStep.has(greetStep)) {
+      setHasSeenStep(prev => new Set([...prev, greetStep]));
+      const greeting = GREETING_BY_STEP[greetStep];
       if (greeting) {
         setMessages(prev => [
           ...prev,
@@ -59,12 +61,10 @@ export default function Assistant({ step, context }) {
     }
   }, [step, hasSeenStep]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input when opened
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
@@ -78,7 +78,6 @@ export default function Assistant({ step, context }) {
     setLoading(true);
 
     try {
-      // Build conversation history (exclude greetings from API calls)
       const apiMessages = [...messages.filter(m => !m.isGreeting), userMsg].map(m => ({
         role: m.role,
         content: m.content,
@@ -96,13 +95,11 @@ export default function Assistant({ step, context }) {
         }),
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to get response');
-      }
+      if (!res.ok) throw new Error('Failed to get response');
 
       const data = await res.json();
       setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
-    } catch (err) {
+    } catch {
       setMessages(prev => [
         ...prev,
         { role: 'assistant', content: "Sorry, I couldn't connect to the AI service. Make sure the ANTHROPIC_API_KEY is configured in your Vercel environment variables.", isError: true },
@@ -119,9 +116,9 @@ export default function Assistant({ step, context }) {
     }
   };
 
-  const hints = STEP_HINTS[step] || [];
+  const hints = STEP_HINTS[step] || STEP_HINTS[3];
+  const stepLabel = STEP_LABELS[step] || 'Working';
 
-  // Floating button + chat panel
   return (
     <>
       {/* Toggle button */}
@@ -143,7 +140,7 @@ export default function Assistant({ step, context }) {
         )}
       </button>
 
-      {/* Notification dot when closed and there are unread greetings */}
+      {/* Notification dot */}
       {!isOpen && messages.length > 0 && (
         <div className="fixed bottom-[4.25rem] right-6 z-50 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
       )}
@@ -158,7 +155,7 @@ export default function Assistant({ step, context }) {
             </div>
             <div>
               <div className="font-semibold text-sm">LW360 Assistant</div>
-              <div className="text-xs opacity-70">Step {step} of 5 — {['Company Setup', 'Census Upload', 'Column Mapping', 'Data Review', 'Generate Reports'][step - 1]}</div>
+              <div className="text-xs opacity-70">{stepLabel}</div>
             </div>
           </div>
 
@@ -210,7 +207,7 @@ export default function Assistant({ step, context }) {
           </div>
 
           {/* Quick hints */}
-          {hints.length > 0 && messages.length < 3 && (
+          {hints.length > 0 && messages.length < 4 && (
             <div className="px-4 pb-2 flex flex-wrap gap-1.5">
               {hints.map((hint, i) => (
                 <button
@@ -233,7 +230,7 @@ export default function Assistant({ step, context }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about the SIMRP program..."
+              placeholder="Ask about SIMRP, mappings, results..."
               disabled={loading}
               className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#1A395C] focus:border-transparent outline-none disabled:opacity-50"
             />

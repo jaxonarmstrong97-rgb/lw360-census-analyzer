@@ -1,45 +1,82 @@
 import { useState, useMemo } from 'react';
 import ProgressBar from './components/ProgressBar';
-import CompanySetup from './components/CompanySetup';
 import FileUpload from './components/FileUpload';
-import ColumnMapper from './components/ColumnMapper';
+import SmartConfirmation from './components/SmartConfirmation';
 import DataReview from './components/DataReview';
+import ColumnMapper from './components/ColumnMapper';
 import OutputGenerator from './components/OutputGenerator';
 import Assistant from './components/Assistant';
 
 export default function App() {
-  const [step, setStep] = useState(1);
-  const [companySetup, setCompanySetup] = useState({});
-  const [fileData, setFileData] = useState(null);
-  const [columnConfig, setColumnConfig] = useState(null);
+  // New 3-step flow: upload → confirm → generate
+  // With optional "adjust" sub-flow that drops into manual column mapping + data review
+  const [step, setStep] = useState(1); // 1=Upload, 2=Confirm, 3=Generate
+  const [adjustMode, setAdjustMode] = useState(null); // null | 'columns' | 'review'
+
+  // Data flowing through the pipeline
+  const [uploadResult, setUploadResult] = useState(null); // { rawData, aiResult, fileName }
+  const [companySetup, setCompanySetup] = useState(null);
   const [employees, setEmployees] = useState(null);
   const [calcResults, setCalcResults] = useState(null);
 
-  // Build context for the AI assistant based on current step
-  const assistantContext = useMemo(() => {
-    const ctx = {
-      companyName: companySetup.companyName,
-      companyType: companySetup.companyType,
-      payFrequency: companySetup.payFrequency,
-    };
+  // For adjust mode
+  const [adjustFileData, setAdjustFileData] = useState(null);
+  const [adjustColumnConfig, setAdjustColumnConfig] = useState(null);
+  const [adjustEmployees, setAdjustEmployees] = useState(null);
 
-    if (fileData) {
-      ctx.fileName = fileData.fileName;
-      ctx.employeeCount = fileData.dataRows?.length;
-      // Send sample data (first 3 rows with headers)
-      if (fileData.headers && fileData.dataRows) {
-        const sampleLines = [
-          `Headers: ${fileData.headers.map(h => String(h)).join(' | ')}`,
-          ...fileData.dataRows.slice(0, 3).map((row, i) =>
-            `Row ${i + 1}: ${row.map(c => String(c ?? '')).join(' | ')}`
-          ),
-        ];
-        ctx.sampleData = sampleLines.join('\n');
-      }
+  // Handle file upload + AI analysis complete
+  const handleAnalysisComplete = (result) => {
+    setUploadResult(result);
+    setStep(2);
+    setAdjustMode(null);
+  };
+
+  // Handle "Looks Good" — go straight to generate
+  const handleLooksGood = ({ companySetup: cs, employees: emps }) => {
+    setCompanySetup(cs);
+    setEmployees(emps);
+    setStep(3);
+  };
+
+  // Handle "Let Me Adjust" — enter manual editing flow
+  const handleAdjust = ({ companySetup: cs, fileData, columnConfig, employees: emps }) => {
+    setCompanySetup(cs);
+    setAdjustFileData(fileData);
+    setAdjustColumnConfig(columnConfig);
+    setAdjustEmployees(emps);
+    setAdjustMode('columns');
+  };
+
+  // Effective step for progress bar (adjust mode still shows as step 2)
+  const progressStep = adjustMode ? 2 : step;
+
+  // Build context for the AI assistant
+  const assistantContext = useMemo(() => {
+    const ctx = {};
+
+    if (companySetup) {
+      ctx.companyName = companySetup.companyName;
+      ctx.companyType = companySetup.companyType;
+      ctx.payFrequency = companySetup.payFrequency;
     }
 
-    if (columnConfig) {
-      ctx.mappings = columnConfig.mappings;
+    if (uploadResult) {
+      ctx.fileName = uploadResult.fileName;
+      ctx.employeeCount = uploadResult.rawData?.length;
+      if (uploadResult.aiResult) {
+        ctx.aiNotes = uploadResult.aiResult.notes;
+        ctx.aiConfidence = uploadResult.aiResult.confidence;
+        ctx.aiMappings = JSON.stringify(uploadResult.aiResult.mappings);
+      }
+      if (uploadResult.rawData) {
+        const headerRow = uploadResult.aiResult?.header_row ?? 0;
+        const headers = uploadResult.rawData[headerRow];
+        const sampleRows = uploadResult.rawData.slice(headerRow + 1, headerRow + 4);
+        ctx.sampleData = [
+          `Headers: ${(headers || []).map(h => String(h)).join(' | ')}`,
+          ...sampleRows.map((row, i) => `Row ${i + 1}: ${row.map(c => String(c ?? '')).join(' | ')}`),
+        ].join('\n');
+      }
     }
 
     if (employees) {
@@ -48,7 +85,6 @@ export default function App() {
 
     if (calcResults) {
       ctx.results = calcResults;
-      // Include a few employee details for specific questions
       const details = (calcResults.results || []).slice(0, 10).map(r =>
         `${r.name}: ${r.filingStatus}, ${r.payType}, $${r.annualGross?.toFixed(0)}, benefit=$${r.monthlyBenefit?.toFixed(2)}/mo, ${r.eligible ? 'Qualified' : 'Ineligible: ' + r.eligibilityReason}`
       );
@@ -56,7 +92,10 @@ export default function App() {
     }
 
     return ctx;
-  }, [companySetup, fileData, columnConfig, employees, calcResults]);
+  }, [companySetup, uploadResult, employees, calcResults]);
+
+  // Determine which step label the assistant shows
+  const assistantStep = adjustMode === 'columns' ? 3 : adjustMode === 'review' ? 4 : step;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -69,55 +108,76 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        <ProgressBar currentStep={step} />
+        <ProgressBar currentStep={progressStep} />
 
-        {step === 1 && (
-          <CompanySetup
-            data={companySetup}
-            onNext={(data) => { setCompanySetup(data); setStep(2); }}
-          />
-        )}
-
-        {step === 2 && (
+        {/* Step 1: Upload */}
+        {step === 1 && !adjustMode && (
           <FileUpload
-            onNext={(data) => { setFileData(data); setStep(3); }}
-            onBack={() => setStep(1)}
+            onAnalysisComplete={handleAnalysisComplete}
           />
         )}
 
-        {step === 3 && fileData && (
+        {/* Step 2: Smart Confirmation */}
+        {step === 2 && !adjustMode && uploadResult && (
+          <SmartConfirmation
+            rawData={uploadResult.rawData}
+            aiResult={uploadResult.aiResult}
+            fileName={uploadResult.fileName}
+            onGenerate={handleLooksGood}
+            onAdjust={handleAdjust}
+            onBack={() => { setStep(1); setUploadResult(null); }}
+          />
+        )}
+
+        {/* Adjust Mode: Column Mapper */}
+        {adjustMode === 'columns' && adjustFileData && (
           <ColumnMapper
-            headers={fileData.headers}
-            dataRows={fileData.dataRows}
-            onNext={(config) => { setColumnConfig(config); setStep(4); }}
-            onBack={() => setStep(2)}
+            headers={adjustFileData.headers}
+            dataRows={adjustFileData.dataRows}
+            onNext={(config) => {
+              setAdjustColumnConfig(config);
+              setAdjustMode('review');
+            }}
+            onBack={() => setAdjustMode(null)}
           />
         )}
 
-        {step === 4 && fileData && columnConfig && (
+        {/* Adjust Mode: Data Review */}
+        {adjustMode === 'review' && adjustFileData && adjustColumnConfig && (
           <DataReview
-            dataRows={fileData.dataRows}
-            mappings={columnConfig.mappings}
-            wageType={columnConfig.wageType}
-            deductionType={columnConfig.deductionType}
-            payFrequency={companySetup.payFrequency}
-            onNext={(emps) => { setEmployees(emps); setStep(5); }}
-            onBack={() => setStep(3)}
+            dataRows={adjustFileData.dataRows}
+            mappings={adjustColumnConfig.mappings}
+            wageType={adjustColumnConfig.wageType}
+            deductionType={adjustColumnConfig.deductionType}
+            payFrequency={companySetup?.payFrequency || 'Biweekly'}
+            onNext={(emps) => {
+              setEmployees(emps);
+              setAdjustMode(null);
+              setStep(3);
+            }}
+            onBack={() => setAdjustMode('columns')}
           />
         )}
 
-        {step === 5 && employees && (
+        {/* Step 3: Generate Reports */}
+        {step === 3 && !adjustMode && employees && companySetup && (
           <OutputGenerator
             employees={employees}
             companySetup={companySetup}
-            onBack={() => setStep(4)}
+            onBack={() => {
+              if (uploadResult) {
+                setStep(2);
+              } else {
+                setStep(1);
+              }
+            }}
             onResults={setCalcResults}
           />
         )}
       </main>
 
       {/* AI Assistant — always visible, context-aware */}
-      <Assistant step={step} context={assistantContext} />
+      <Assistant step={assistantStep} context={assistantContext} />
     </div>
   );
 }

@@ -3,21 +3,30 @@ import { parseCSV } from '../parsers/csvParser';
 import { parseExcel } from '../parsers/excelParser';
 import { parsePDF } from '../parsers/pdfParser';
 
-export default function FileUpload({ onNext, onBack }) {
-  const [rawData, setRawData] = useState(null);
+const ANALYSIS_STEPS = [
+  'Parsing file...',
+  'Sending to AI for analysis...',
+  'Detecting header row and columns...',
+  'Mapping fields and validating...',
+  'Done!',
+];
+
+export default function FileUpload({ onAnalysisComplete, onBack }) {
   const [fileName, setFileName] = useState('');
-  const [headerRow, setHeaderRow] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('idle'); // idle | parsing | analyzing | done | error
+  const [analysisStep, setAnalysisStep] = useState(0);
   const [error, setError] = useState('');
   const fileInputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const handleFile = useCallback(async (file) => {
-    setLoading(true);
-    setError('');
     setFileName(file.name);
+    setError('');
+    setStatus('parsing');
+    setAnalysisStep(0);
 
     try {
+      // Stage 1: Parse raw file
       const ext = file.name.split('.').pop().toLowerCase();
       let data;
 
@@ -31,20 +40,57 @@ export default function FileUpload({ onNext, onBack }) {
         throw new Error(`Unsupported file type: .${ext}`);
       }
 
-      // Filter out completely empty rows
-      const filtered = data.filter(row =>
+      // Filter completely empty rows
+      const rawData = data.filter(row =>
         Array.isArray(row) ? row.some(cell => String(cell).trim() !== '') : false
       );
 
-      setRawData(filtered);
-      setHeaderRow(0);
+      if (rawData.length < 2) {
+        throw new Error('File appears to be empty or has too few rows.');
+      }
+
+      setAnalysisStep(1);
+      setStatus('analyzing');
+
+      // Stage 2: Send to AI for full analysis
+      const rowsToSend = rawData.slice(0, 25).map(row =>
+        Array.isArray(row) ? row.map(c => String(c ?? '')) : [String(row)]
+      );
+
+      const res = await fetch('/api/analyze-columns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rawRows: rowsToSend,
+          fileName: file.name,
+        }),
+      });
+
+      setAnalysisStep(2);
+
+      if (!res.ok) {
+        throw new Error('AI analysis service unavailable. You can still map columns manually.');
+      }
+
+      const aiResult = await res.json();
+      setAnalysisStep(3);
+
+      // Small delay for UX
+      await new Promise(r => setTimeout(r, 300));
+      setAnalysisStep(4);
+      setStatus('done');
+
+      // Pass everything to parent
+      onAnalysisComplete({
+        rawData,
+        aiResult,
+        fileName: file.name,
+      });
     } catch (err) {
-      setError(err.message || 'Failed to parse file');
-      setRawData(null);
-    } finally {
-      setLoading(false);
+      setError(err.message || 'Failed to process file');
+      setStatus('error');
     }
-  }, []);
+  }, [onAnalysisComplete]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault();
@@ -53,30 +99,26 @@ export default function FileUpload({ onNext, onBack }) {
     if (file) handleFile(file);
   }, [handleFile]);
 
-  const previewRows = rawData ? rawData.slice(0, 15) : [];
-
-  const handleNext = () => {
-    if (!rawData) return;
-    const headers = rawData[headerRow];
-    const dataRows = rawData.slice(headerRow + 1);
-    onNext({ headers, dataRows, headerRow, fileName });
-  };
+  const isProcessing = status === 'parsing' || status === 'analyzing';
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold text-[#1A395C] mb-6">Upload Census Data</h2>
+    <div className="max-w-2xl mx-auto">
+      <h2 className="text-2xl font-bold text-[#1A395C] mb-2">Upload Census File</h2>
+      <p className="text-gray-500 text-sm mb-6">Drop your file and our AI will automatically detect the format, headers, and columns.</p>
 
       {/* Drop zone */}
       <div
-        className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors ${
-          isDragging
-            ? 'border-[#1A395C] bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400'
+        className={`border-2 border-dashed rounded-2xl p-14 text-center transition-all ${
+          isProcessing
+            ? 'border-[#1A395C] bg-blue-50 cursor-wait'
+            : isDragging
+            ? 'border-[#1A395C] bg-blue-50 cursor-pointer'
+            : 'border-gray-300 hover:border-gray-400 cursor-pointer'
         }`}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={onDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => !isProcessing && fileInputRef.current?.click()}
       >
         <input
           ref={fileInputRef}
@@ -85,105 +127,68 @@ export default function FileUpload({ onNext, onBack }) {
           accept=".csv,.xlsx,.xls,.pdf"
           onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
         />
-        <div className="text-4xl mb-3">📁</div>
-        <p className="text-gray-600 font-medium">
-          {loading ? 'Parsing file...' : 'Drag & drop a file here, or click to browse'}
-        </p>
-        <p className="text-gray-400 text-sm mt-1">
-          Supports CSV, Excel (.xlsx/.xls), and PDF
-        </p>
-        {fileName && (
-          <p className="text-[#1A395C] font-medium mt-3">{fileName}</p>
+
+        {status === 'idle' && (
+          <>
+            <div className="text-5xl mb-4">&#128193;</div>
+            <p className="text-gray-600 font-medium text-lg">Drag & drop your census file</p>
+            <p className="text-gray-400 text-sm mt-1">or click to browse</p>
+            <p className="text-gray-300 text-xs mt-3">CSV, Excel (.xlsx/.xls), or PDF</p>
+          </>
+        )}
+
+        {isProcessing && (
+          <div className="space-y-4">
+            <div className="flex justify-center">
+              <svg className="w-10 h-10 text-[#1A395C] animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+            <p className="text-[#1A395C] font-semibold text-lg">Analyzing your census file...</p>
+            <p className="text-gray-500 text-sm">{fileName}</p>
+
+            {/* Progress steps */}
+            <div className="max-w-sm mx-auto text-left space-y-1.5 mt-4">
+              {ANALYSIS_STEPS.map((step, i) => (
+                <div key={i} className={`flex items-center gap-2 text-sm ${
+                  i < analysisStep ? 'text-green-600' :
+                  i === analysisStep ? 'text-[#1A395C] font-medium' :
+                  'text-gray-300'
+                }`}>
+                  {i < analysisStep ? (
+                    <span className="text-green-500">&#10003;</span>
+                  ) : i === analysisStep ? (
+                    <span className="animate-pulse">&#9679;</span>
+                  ) : (
+                    <span>&#9675;</span>
+                  )}
+                  {step}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <>
+            <div className="text-5xl mb-4">&#9888;&#65039;</div>
+            <p className="text-red-600 font-medium">{error}</p>
+            <p className="text-gray-400 text-sm mt-2">Click to try another file</p>
+          </>
         )}
       </div>
 
-      {error && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-          {error}
+      {status !== 'idle' && !isProcessing && (
+        <div className="mt-6 flex justify-start">
+          <button
+            onClick={() => { setStatus('idle'); setFileName(''); setError(''); }}
+            className="px-5 py-2 rounded-lg font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm"
+          >
+            Upload a different file
+          </button>
         </div>
       )}
-
-      {/* Preview & header row selector */}
-      {rawData && rawData.length > 0 && (
-        <div className="mt-6">
-          <div className="flex items-center gap-4 mb-3">
-            <label className="text-sm font-medium text-gray-700">
-              Header Row:
-            </label>
-            <select
-              value={headerRow}
-              onChange={(e) => setHeaderRow(Number(e.target.value))}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1A395C] outline-none"
-            >
-              {previewRows.map((_, i) => (
-                <option key={i} value={i}>
-                  Row {i + 1}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs text-gray-500">
-              Click the row that contains column headers
-            </span>
-          </div>
-
-          <div className="border rounded-lg overflow-auto max-h-96">
-            <table className="min-w-full text-sm">
-              <tbody>
-                {previewRows.map((row, rowIdx) => (
-                  <tr
-                    key={rowIdx}
-                    className={`cursor-pointer transition-colors ${
-                      rowIdx === headerRow
-                        ? 'bg-[#1A395C] text-white font-semibold'
-                        : rowIdx < headerRow
-                        ? 'bg-gray-100 text-gray-400'
-                        : 'hover:bg-gray-50'
-                    }`}
-                    onClick={() => setHeaderRow(rowIdx)}
-                  >
-                    <td className="px-2 py-1.5 text-xs w-10 text-center border-r border-gray-200">
-                      {rowIdx + 1}
-                    </td>
-                    {(Array.isArray(row) ? row : [row]).map((cell, cellIdx) => (
-                      <td
-                        key={cellIdx}
-                        className="px-3 py-1.5 border-r border-gray-200 whitespace-nowrap"
-                      >
-                        {String(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <p className="text-xs text-gray-500 mt-2">
-            Showing first {previewRows.length} rows. Total rows: {rawData.length}.
-            Click a row to set it as the header row.
-          </p>
-        </div>
-      )}
-
-      <div className="mt-8 flex justify-between">
-        <button
-          onClick={onBack}
-          className="px-6 py-2.5 rounded-lg font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
-        >
-          ← Back
-        </button>
-        <button
-          onClick={handleNext}
-          disabled={!rawData}
-          className={`px-6 py-2.5 rounded-lg font-medium transition-colors ${
-            rawData
-              ? 'bg-[#1A395C] text-white hover:bg-[#142d49]'
-              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-          }`}
-        >
-          Next →
-        </button>
-      </div>
     </div>
   );
 }

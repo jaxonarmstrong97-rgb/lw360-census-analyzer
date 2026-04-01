@@ -124,13 +124,16 @@ export default async function handler(req, res) {
     let systemPrompt = SYSTEM_PROMPT;
     if (context) {
       systemPrompt += '\n\n## Current Context\n';
-      if (context.step) systemPrompt += `User is on Step ${context.step} of 5.\n`;
+      if (context.step) systemPrompt += `User is on Step ${context.step} (flow: Upload → Confirm → Generate).\n`;
       if (context.companyName) systemPrompt += `Company: ${context.companyName}\n`;
       if (context.companyType) systemPrompt += `Company Type: ${context.companyType === 'TRS' ? 'TX School District (TRS)' : 'Private Sector'}\n`;
       if (context.payFrequency) systemPrompt += `Pay Frequency: ${context.payFrequency}\n`;
       if (context.employeeCount) systemPrompt += `Employees loaded: ${context.employeeCount}\n`;
       if (context.fileName) systemPrompt += `File uploaded: ${context.fileName}\n`;
       if (context.sampleData) systemPrompt += `Sample data (first 3 rows):\n${context.sampleData}\n`;
+      if (context.aiConfidence) systemPrompt += `AI analysis confidence: ${context.aiConfidence}\n`;
+      if (context.aiNotes) systemPrompt += `AI analysis notes: ${context.aiNotes}\n`;
+      if (context.aiMappings) systemPrompt += `AI-detected column mappings: ${context.aiMappings}\n`;
       if (context.mappings) systemPrompt += `Column mappings: ${JSON.stringify(context.mappings)}\n`;
       if (context.results) {
         const r = context.results;

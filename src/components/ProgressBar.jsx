@@ -1,14 +1,12 @@
 const STEPS = [
-  'Company Setup',
-  'Census Upload',
-  'Column Mapping',
-  'Data Review',
-  'Generate Reports',
+  'Upload',
+  'Confirm',
+  'Generate',
 ];
 
 export default function ProgressBar({ currentStep }) {
   return (
-    <div className="w-full mb-8">
+    <div className="w-full max-w-md mx-auto mb-8">
       <div className="flex items-center justify-between">
         {STEPS.map((label, i) => {
           const stepNum = i + 1;
@@ -33,7 +31,7 @@ export default function ProgressBar({ currentStep }) {
                     : 'bg-gray-300 text-gray-600'
                 }`}
               >
-                {isComplete ? '✓' : stepNum}
+                {isComplete ? '\u2713' : stepNum}
               </div>
               <span
                 className={`mt-2 text-xs text-center ${
