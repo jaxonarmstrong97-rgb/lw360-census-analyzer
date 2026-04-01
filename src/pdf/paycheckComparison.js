@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { applyPlugin } from 'jspdf-autotable';
+applyPlugin(jsPDF);
 import { formatCurrency, getPayFrequencyLabel } from '../utils/formatters';
 import { SIMRP_PREMIUM_MONTHLY, SIMRP_PREMIUM_ANNUAL, PAY_PERIODS } from '../engine/constants';
 

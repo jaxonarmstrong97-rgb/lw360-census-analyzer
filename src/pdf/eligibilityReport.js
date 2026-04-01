@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { applyPlugin } from 'jspdf-autotable';
+applyPlugin(jsPDF);
 import { formatCurrency, formatPercent, formatDate, getPayFrequencyLabel } from '../utils/formatters';
 
 const NAVY = [26, 57, 92]; // #1A395C
