@@ -1,6 +1,5 @@
 import jsPDF from 'jspdf';
-import { applyPlugin } from 'jspdf-autotable';
-applyPlugin(jsPDF);
+import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatPercent, formatDate, getPayFrequencyLabel } from '../utils/formatters';
 
 const NAVY = [26, 57, 92]; // #1A395C
@@ -11,11 +10,9 @@ const GREEN = [34, 139, 34];
 const DARK_RED = [180, 0, 0];
 
 function addHeader(doc, companyName) {
-  // Navy header bar
   doc.setFillColor(...NAVY);
   doc.rect(0, 0, 215.9, 25, 'F');
 
-  // Company branding
   doc.setTextColor(...WHITE);
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
@@ -24,7 +21,6 @@ function addHeader(doc, companyName) {
   doc.setFont('helvetica', 'normal');
   doc.text('Health Strategy Advisors', 15, 18);
 
-  // Confidential badge
   doc.setFillColor(...RED);
   doc.roundedRect(155, 6, 45, 12, 2, 2, 'F');
   doc.setTextColor(...WHITE);
@@ -49,9 +45,8 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const { results, qualified, ineligible, aggregates } = calcResults;
 
-  // Calculate total pages estimate
   const employeePages = Math.ceil(results.length / 28);
-  const totalPages = 4 + employeePages; // cover + overview + summary + employees + disclaimer
+  const totalPages = 4 + employeePages;
 
   // ===== PAGE 1: COVER / EXECUTIVE SUMMARY =====
   addHeader(doc, companyName);
@@ -69,13 +64,11 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
   doc.text(formatDate(reportDate), 107.95, 110, { align: 'center' });
   doc.text(`${companyType === 'TRS' ? 'TX School District (TRS)' : 'Private Sector'} | ${getPayFrequencyLabel(payFrequency)}`, 107.95, 120, { align: 'center' });
 
-  // Summary boxes
   const boxY = 145;
   const boxW = 80;
   const boxH = 30;
   const gap = 20;
 
-  // Total analyzed
   doc.setFillColor(...LIGHT_GRAY);
   doc.roundedRect(15, boxY, boxW, boxH, 3, 3, 'F');
   doc.setFontSize(22);
@@ -86,7 +79,6 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
   doc.setFont('helvetica', 'normal');
   doc.text('Employees Analyzed', 55, boxY + 22, { align: 'center' });
 
-  // Qualified
   doc.setFillColor(230, 255, 230);
   doc.roundedRect(15 + boxW + gap, boxY, boxW, boxH, 3, 3, 'F');
   doc.setFontSize(22);
@@ -141,9 +133,9 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
     '  4. The net result: employees take home MORE money each pay period',
     '',
     'Wellness Benefits Included:',
-    '  • MDLive 24/7 Telehealth — $0 copay doctor visits anytime',
-    '  • AllOne Health EAP — counseling, legal, and financial assistance',
-    '  • OVAL Rx — prescription discount program',
+    '  \u2022 MDLive 24/7 Telehealth \u2014 $0 copay doctor visits anytime',
+    '  \u2022 AllOne Health EAP \u2014 counseling, legal, and financial assistance',
+    '  \u2022 OVAL Rx \u2014 prescription discount program',
     '',
     'Zero Financial Risk Guarantee:',
     'No employee will ever take home less money as a result of participating in this program.',
@@ -181,7 +173,7 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
     ['Net Annual Employer Savings', formatCurrency(aggregates.totalNetAnnualERSavings)],
   ];
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: y,
     body: summaryData,
     theme: 'plain',
@@ -191,14 +183,12 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
       1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
-      // Section headers
       if (data.row.index === 0 || data.row.index === 6) {
         data.cell.styles.fillColor = NAVY;
         data.cell.styles.textColor = WHITE;
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.fontSize = 11;
       }
-      // Alternating rows
       if (![0, 5, 6].includes(data.row.index) && data.row.index % 2 === 0) {
         data.cell.styles.fillColor = LIGHT_GRAY;
       }
@@ -209,14 +199,12 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
   addFooter(doc, 3, totalPages);
 
   // ===== PAGES 4-N: EMPLOYEE DETAIL TABLE =====
-  const ROWS_PER_PAGE = 28;
   const sortedResults = [...results].sort((a, b) => a.name.localeCompare(b.name));
   const qualifiedSorted = sortedResults.filter(r => r.eligible);
   const ineligibleSorted = sortedResults.filter(r => !r.eligible);
 
   let pageNum = 4;
 
-  // Qualified employees table
   if (qualifiedSorted.length > 0) {
     doc.addPage();
     addHeader(doc, companyName);
@@ -237,7 +225,7 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
       formatCurrency(r.monthlyBenefit),
     ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: y + 5,
       head: [['Employee Name', 'Filing', 'Annual Gross', 'FIT Sav/mo', 'FICA Sav/mo', 'EE Fee/mo', 'Net Benefit/mo']],
       body: qualifiedTableData,
@@ -254,7 +242,7 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
       },
       alternateRowStyles: { fillColor: LIGHT_GRAY },
       margin: { left: 15, right: 15 },
-      didDrawPage: (data) => {
+      didDrawPage: () => {
         addHeader(doc, companyName);
         addFooter(doc, pageNum, totalPages);
         pageNum++;
@@ -262,7 +250,6 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
     });
   }
 
-  // Ineligible employees
   if (ineligibleSorted.length > 0) {
     doc.addPage();
     addHeader(doc, companyName);
@@ -280,7 +267,7 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
       r.eligibilityReason,
     ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: y + 5,
       head: [['Employee Name', 'Filing Status', 'Annual Gross', 'Reason']],
       body: ineligibleTableData,
@@ -294,7 +281,7 @@ export function generateEligibilityReport(calcResults, companyName, companyType,
       },
       alternateRowStyles: { fillColor: [255, 240, 240] },
       margin: { left: 15, right: 15 },
-      didDrawPage: (data) => {
+      didDrawPage: () => {
         addHeader(doc, companyName);
         addFooter(doc, pageNum, totalPages);
         pageNum++;

@@ -1,6 +1,5 @@
 import jsPDF from 'jspdf';
-import { applyPlugin } from 'jspdf-autotable';
-applyPlugin(jsPDF);
+import autoTable from 'jspdf-autotable';
 import { formatCurrency, getPayFrequencyLabel } from '../utils/formatters';
 import { SIMRP_PREMIUM_MONTHLY, SIMRP_PREMIUM_ANNUAL, PAY_PERIODS } from '../engine/constants';
 
@@ -21,7 +20,6 @@ function addHeader(doc, companyName) {
   doc.setFont('helvetica', 'normal');
   doc.text('Health Strategy Advisors', 15, 15);
 
-  // Confidential badge
   doc.setFillColor(...RED);
   doc.roundedRect(160, 4, 38, 10, 2, 2, 'F');
   doc.setTextColor(...WHITE);
@@ -29,7 +27,6 @@ function addHeader(doc, companyName) {
   doc.setFont('helvetica', 'bold');
   doc.text('CONFIDENTIAL', 179, 11, { align: 'center' });
 
-  // Company name
   doc.setTextColor(...NAVY);
   doc.setFontSize(8);
   doc.text(companyName, 107.95, 10, { align: 'center' });
@@ -53,7 +50,6 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
 
   let y = 30;
 
-  // Employee info
   doc.setFontSize(16);
   doc.setTextColor(...NAVY);
   doc.setFont('helvetica', 'bold');
@@ -66,7 +62,6 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
   doc.text(`Filing Status: ${emp.filingStatus}  |  Pay Type: ${emp.payType}  |  Pay Frequency: ${periodLabel}  |  Annual Gross: ${formatCurrency(emp.annualGross)}`, 15, y);
   y += 10;
 
-  // Before/After comparison table
   doc.setFontSize(12);
   doc.setTextColor(...NAVY);
   doc.setFont('helvetica', 'bold');
@@ -75,7 +70,6 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
 
   const fmtPos = (v) => v > 0 ? `+${formatCurrency(v)}` : formatCurrency(v);
 
-  // Compute per-period values
   const grossPP = emp.perPeriodGross;
   const fitBeforePP = emp.perPeriodFITBefore;
   const fitAfterPP = emp.perPeriodFITAfter;
@@ -86,25 +80,23 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
   const existingDedPP = emp.perPeriodExistingDeductions;
   const eeFeePP = emp.perPeriodEEFee;
 
-  // Net take-home before
   const netBefore = grossPP - fitBeforePP - ssBeforePP - medBeforePP - existingDedPP;
-  // Net take-home after
   const netAfter = grossPP - fitAfterPP - ssAfterPP - medAfterPP - existingDedPP - premiumPerPeriod + premiumPerPeriod - eeFeePP;
   const netDiff = netAfter - netBefore;
 
   const tableData = [
-    ['Gross Pay', formatCurrency(grossPP), formatCurrency(grossPP), '—'],
+    ['Gross Pay', formatCurrency(grossPP), formatCurrency(grossPP), '\u2014'],
     ['Federal Income Tax', `(${formatCurrency(fitBeforePP)})`, `(${formatCurrency(fitAfterPP)})`, fmtPos(fitBeforePP - fitAfterPP)],
     ['Social Security Tax', `(${formatCurrency(ssBeforePP)})`, `(${formatCurrency(ssAfterPP)})`, fmtPos(ssBeforePP - ssAfterPP)],
     ['Medicare Tax', `(${formatCurrency(medBeforePP)})`, `(${formatCurrency(medAfterPP)})`, fmtPos(medBeforePP - medAfterPP)],
-    ['Existing Pre-Tax Deductions', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '—', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '—', '—'],
-    ['LW Premium (pre-tax)', '—', `(${formatCurrency(premiumPerPeriod)})`, '—'],
-    ['LW Reimbursement (post-tax)', '—', formatCurrency(premiumPerPeriod), '—'],
-    ['EE Fee (post-tax)', '—', `(${formatCurrency(eeFeePP)})`, '—'],
+    ['Existing Pre-Tax Deductions', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '\u2014', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '\u2014', '\u2014'],
+    ['LW Premium (pre-tax)', '\u2014', `(${formatCurrency(premiumPerPeriod)})`, '\u2014'],
+    ['LW Reimbursement (post-tax)', '\u2014', formatCurrency(premiumPerPeriod), '\u2014'],
+    ['EE Fee (post-tax)', '\u2014', `(${formatCurrency(eeFeePP)})`, '\u2014'],
     ['Net Take-Home Pay', formatCurrency(netBefore), formatCurrency(netAfter), fmtPos(netDiff)],
   ];
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: y,
     head: [['', 'BEFORE LW360', 'AFTER LW360', 'DIFFERENCE']],
     body: tableData,
@@ -124,26 +116,24 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
       3: { cellWidth: 38, halign: 'right' },
     },
     didParseCell: (data) => {
-      // Net take-home row (last row)
       if (data.row.index === tableData.length - 1) {
         data.cell.styles.fillColor = NAVY;
         data.cell.styles.textColor = WHITE;
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.fontSize = 9;
-      }
-      // Alternating rows
-      else if (data.row.index % 2 === 0) {
+      } else if (data.row.index % 2 === 0) {
         data.cell.styles.fillColor = LIGHT_GRAY;
       }
-      // Difference column positive values in green
-      if (data.column.index === 3 && data.cell.raw && data.cell.raw.startsWith('+')) {
+      if (data.column.index === 3 && data.cell.raw && String(data.cell.raw).startsWith('+')) {
         data.cell.styles.textColor = GREEN_TEXT;
       }
     },
     margin: { left: 20, right: 20 },
   });
 
-  y = doc.lastAutoTable.finalY + 12;
+  // Get the final Y position after the table
+  const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : y + 100;
+  y = finalY + 12;
 
   // Monthly benefit highlight
   doc.setFillColor(230, 255, 230);
@@ -164,7 +154,6 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
 
   y += 35;
 
-  // Wellness benefits
   doc.setFontSize(11);
   doc.setTextColor(...NAVY);
   doc.setFont('helvetica', 'bold');
@@ -183,22 +172,18 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
 
   benefits.forEach(([title, desc]) => {
     doc.setFont('helvetica', 'bold');
-    doc.text(`• ${title}`, 20, y);
+    doc.text(`\u2022 ${title}`, 20, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(` — ${desc}`, 20 + doc.getTextWidth(`• ${title}`), y);
+    doc.text(` \u2014 ${desc}`, 20 + doc.getTextWidth(`\u2022 ${title}`), y);
     y += 6;
   });
 
   addFooter(doc);
 }
 
-/**
- * Generate a combined PDF with all qualified employees.
- */
 export function generatePaycheckComparisons(qualifiedEmployees, companyName, payFrequency) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
 
-  // Cover page
   addHeader(doc, companyName);
 
   doc.setFontSize(24);
@@ -214,7 +199,6 @@ export function generatePaycheckComparisons(qualifiedEmployees, companyName, pay
 
   addFooter(doc);
 
-  // One page per employee
   qualifiedEmployees.forEach((emp) => {
     doc.addPage();
     generateEmployeePage(doc, emp, companyName, payFrequency);
@@ -223,9 +207,6 @@ export function generatePaycheckComparisons(qualifiedEmployees, companyName, pay
   return doc;
 }
 
-/**
- * Generate individual PDFs (one per employee).
- */
 export function generateIndividualPaychecks(qualifiedEmployees, companyName, payFrequency) {
   return qualifiedEmployees.map((emp) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
