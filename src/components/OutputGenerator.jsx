@@ -5,7 +5,7 @@ import { generatePaycheckComparisons, generateIndividualPaychecks } from '../pdf
 import { formatCurrency, formatPercent } from '../utils/formatters';
 import JSZip from 'jszip';
 
-export default function OutputGenerator({ employees, companySetup, onBack }) {
+export default function OutputGenerator({ employees, companySetup, onBack, onResults }) {
   const [genEligibility, setGenEligibility] = useState(true);
   const [genPaychecks, setGenPaychecks] = useState(true);
   const [genRawData, setGenRawData] = useState(false);
@@ -27,6 +27,7 @@ export default function OutputGenerator({ employees, companySetup, onBack }) {
       setProgress(10);
       const calcResults = calculateAllEmployees(employees, companyType, payFrequency);
       setResults(calcResults);
+      if (onResults) onResults(calcResults.aggregates);
       setProgress(30);
 
       const newDownloads = [];

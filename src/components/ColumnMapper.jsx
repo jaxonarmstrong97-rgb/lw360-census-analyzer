@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { detectColumns } from '../utils/columnDetector';
 
 const REQUIRED_FIELDS = [
@@ -24,9 +24,49 @@ export default function ColumnMapper({ headers, dataRows, onNext, onBack }) {
   const [wageType, setWageType] = useState('annual'); // annual | per-period
   const [deductionType, setDeductionType] = useState('annual'); // annual | per-period
 
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiNotes, setAiNotes] = useState('');
+
   useEffect(() => {
     setMappings(autoDetected);
   }, [autoDetected]);
+
+  const runAIDetect = useCallback(async () => {
+    setAiLoading(true);
+    setAiNotes('');
+    try {
+      const sampleRows = dataRows.slice(0, 5).map(row =>
+        Array.isArray(row) ? row.map(c => String(c ?? '')) : [String(row)]
+      );
+      const res = await fetch('/api/analyze-columns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          headers: headers.map(h => String(h)),
+          sampleRows,
+        }),
+      });
+      if (!res.ok) throw new Error('AI service unavailable');
+      const data = await res.json();
+
+      // Apply AI mappings (only non-null values)
+      const newMappings = {};
+      for (const [key, idx] of Object.entries(data.mappings)) {
+        if (idx !== null && idx >= 0 && idx < headers.length) {
+          newMappings[key] = idx;
+        }
+      }
+      setMappings(newMappings);
+
+      if (data.wageType) setWageType(data.wageType);
+      if (data.deductionType) setDeductionType(data.deductionType);
+      if (data.notes) setAiNotes(`AI (${data.confidence} confidence): ${data.notes}`);
+    } catch {
+      setAiNotes('Could not connect to AI service. Using regex-based detection.');
+    } finally {
+      setAiLoading(false);
+    }
+  }, [headers, dataRows]);
 
   const setMapping = (field, value) => {
     setMappings((prev) => {
@@ -81,10 +121,39 @@ export default function ColumnMapper({ headers, dataRows, onNext, onBack }) {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h2 className="text-2xl font-bold text-[#1A395C] mb-2">Map Columns</h2>
-      <p className="text-gray-500 text-sm mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-2xl font-bold text-[#1A395C]">Map Columns</h2>
+        <button
+          onClick={runAIDetect}
+          disabled={aiLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#1A395C] to-[#2a5a8c] text-white rounded-lg text-sm font-medium hover:from-[#142d49] hover:to-[#1A395C] transition-all disabled:opacity-60 shadow-md"
+        >
+          {aiLoading ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Analyzing...
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              AI Auto-Detect
+            </>
+          )}
+        </button>
+      </div>
+      <p className="text-gray-500 text-sm mb-2">
         Map your census columns to the required fields. Auto-detected mappings are pre-filled.
       </p>
+      {aiNotes && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm">
+          {aiNotes}
+        </div>
+      )}
 
       <div className="bg-white border rounded-xl p-6 mb-6">
         <h3 className="text-sm font-semibold text-[#1A395C] uppercase tracking-wide mb-3">
