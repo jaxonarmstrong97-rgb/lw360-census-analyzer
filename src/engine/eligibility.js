@@ -1,23 +1,42 @@
-import { EE_FEE_MONTHLY_TRS, MEDICARE_RATE, SIMRP_PREMIUM_ANNUAL } from './constants.js';
+import { EE_FEE_MONTHLY, MEDICARE_RATE, FICA_RATE, SIMRP_PREMIUM_ANNUAL } from './constants.js';
 
 /**
  * Determine eligibility for the SIMRP program.
  */
 export function checkEligibility(monthlyFITSavings, monthlyFICASavings, companyType) {
   const medicareSavingsMonthly = (SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE) / 12;
+  const ficaSavingsMonthly = (SIMRP_PREMIUM_ANNUAL * FICA_RATE) / 12;
+  const eeFee = EE_FEE_MONTHLY[companyType] || EE_FEE_MONTHLY.Private;
 
-  if (companyType === 'TRS') {
-    // TRS: $0 FIT = ineligible. Must have FIT + Medicare > $80/mo fee
+  if (companyType === 'Non-FICA') {
+    // Non-FICA: $0 FIT = ineligible. Must have FIT + Medicare > $80/mo fee
     if (monthlyFITSavings <= 0) {
       return {
         eligible: false,
-        reason: '$0 FIT — cannot cover $80/mo TRS fee with only Medicare savings',
+        reason: '$0 FIT — cannot cover $80/mo fee with only Medicare savings',
       };
     }
-    if ((monthlyFITSavings + medicareSavingsMonthly) <= EE_FEE_MONTHLY_TRS) {
+    if ((monthlyFITSavings + medicareSavingsMonthly) <= eeFee) {
       return {
         eligible: false,
-        reason: `Insufficient savings ($${(monthlyFITSavings + medicareSavingsMonthly).toFixed(2)}/mo) to cover $80/mo TRS fee`,
+        reason: `Insufficient savings ($${(monthlyFITSavings + medicareSavingsMonthly).toFixed(2)}/mo) to cover $${eeFee}/mo fee`,
+      };
+    }
+    return { eligible: true, reason: 'Qualified' };
+  }
+
+  if (companyType === 'FICA-School') {
+    // FICA-School: $0 FIT = ineligible. Must have FIT + FICA > $89/mo fee
+    if (monthlyFITSavings <= 0) {
+      return {
+        eligible: false,
+        reason: '$0 FIT — cannot cover $89/mo fee with only FICA savings',
+      };
+    }
+    if ((monthlyFITSavings + ficaSavingsMonthly) <= eeFee) {
+      return {
+        eligible: false,
+        reason: `Insufficient savings ($${(monthlyFITSavings + ficaSavingsMonthly).toFixed(2)}/mo) to cover $${eeFee}/mo fee`,
       };
     }
     return { eligible: true, reason: 'Qualified' };

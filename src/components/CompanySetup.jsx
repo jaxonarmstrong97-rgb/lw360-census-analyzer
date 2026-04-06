@@ -34,8 +34,9 @@ export default function CompanySetup({ data, onNext }) {
           </label>
           <div className="flex gap-4">
             {[
-              { value: 'Private', label: 'Private Sector' },
-              { value: 'TRS', label: 'TX School District (TRS)' },
+              { value: 'Private', label: 'Regular Business' },
+              { value: 'Non-FICA', label: 'Non-FICA School/Business' },
+              { value: 'FICA-School', label: 'FICA School District' },
             ].map((opt) => (
               <button
                 key={opt.value}

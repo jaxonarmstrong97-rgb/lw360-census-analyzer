@@ -1,15 +1,15 @@
 import {
   SIMRP_PREMIUM_ANNUAL, SIMRP_PREMIUM_MONTHLY,
   FICA_RATE, MEDICARE_RATE, SS_WAGE_BASE,
-  ER_FEE_PRIVATE, ER_FEE_TRS,
+  ER_FEE_MONTHLY,
 } from './constants.js';
 
 /**
  * Calculate employee FICA savings.
  */
 export function calculateEEFicaSavings(annualGross, companyType) {
-  if (companyType === 'TRS') {
-    // TRS: Medicare only
+  if (companyType === 'Non-FICA') {
+    // Non-FICA: Medicare only (1.45%)
     return {
       annualFicaSavings: SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE,
       monthlyFicaSavings: (SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE) / 12,
@@ -17,7 +17,7 @@ export function calculateEEFicaSavings(annualGross, companyType) {
     };
   }
 
-  // Private sector
+  // FICA-School and Private: full FICA or blended
   if (annualGross > SS_WAGE_BASE) {
     // Above SS wage base: Medicare only
     return {
@@ -39,20 +39,23 @@ export function calculateEEFicaSavings(annualGross, companyType) {
  * Calculate employer FICA savings.
  */
 export function calculateERFicaSavings(annualGross, companyType) {
-  if (companyType === 'TRS') {
+  const erFee = ER_FEE_MONTHLY[companyType] || ER_FEE_MONTHLY.Private;
+
+  if (companyType === 'Non-FICA') {
+    // Non-FICA: Medicare only
     const annualSavings = SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE;
     const monthlySavings = annualSavings / 12;
     return {
       annualERSavings: annualSavings,
       monthlyERSavings: monthlySavings,
-      annualERFee: ER_FEE_TRS * 12,
-      monthlyERFee: ER_FEE_TRS,
-      netAnnualERSavings: annualSavings - (ER_FEE_TRS * 12),
-      netMonthlyERSavings: monthlySavings - ER_FEE_TRS,
+      annualERFee: erFee * 12,
+      monthlyERFee: erFee,
+      netAnnualERSavings: annualSavings - (erFee * 12),
+      netMonthlyERSavings: monthlySavings - erFee,
     };
   }
 
-  // Private sector
+  // FICA-School and Private: full FICA or blended
   let annualSavings;
 
   if (annualGross <= SS_WAGE_BASE) {
@@ -70,9 +73,9 @@ export function calculateERFicaSavings(annualGross, companyType) {
   return {
     annualERSavings: annualSavings,
     monthlyERSavings: monthlySavings,
-    annualERFee: ER_FEE_PRIVATE * 12,
-    monthlyERFee: ER_FEE_PRIVATE,
-    netAnnualERSavings: annualSavings - (ER_FEE_PRIVATE * 12),
-    netMonthlyERSavings: monthlySavings - ER_FEE_PRIVATE,
+    annualERFee: erFee * 12,
+    monthlyERFee: erFee,
+    netAnnualERSavings: annualSavings - (erFee * 12),
+    netMonthlyERSavings: monthlySavings - erFee,
   };
 }

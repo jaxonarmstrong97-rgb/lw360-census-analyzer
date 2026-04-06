@@ -12,7 +12,7 @@ CRITICAL RULES:
 - Filing status can appear as codes (S, M, H, 1, 2, 3) or full words
 - Names can be "Last, First" or "First Last" or split across columns
 - Ignore rows that look like totals, subtotals, page numbers, or footers (containing "TOTAL", "SUBTOTAL", "GRAND TOTAL", "PAGE", "SUM")
-- If you see "ISD", "TRS", "Teacher Retirement", "school district" anywhere, note company_type as "school_district"
+- If you see "ISD", "school district" anywhere, note company_type — use "FICA-School" for FICA-participating school districts, "Non-FICA" for TRS/non-FICA schools or businesses, and "Private" for regular businesses
 - For pay type, look for columns with values like H/S, Hourly/Salary/Salaried, or columns labeled "Emp Type", "Classification", etc.
 
 NAME FORMAT VARIATIONS:
@@ -98,7 +98,7 @@ Return JSON with this exact structure:
   "detected_pay_frequency": "Weekly" | "Biweekly" | "Semi-Monthly" | "Monthly" | null,
   "confidence": "high" | "medium" | "low",
   "company_name": "<company name if visible in top rows, or null>",
-  "company_type": "Private" | "TRS",
+  "company_type": "Non-FICA" | "FICA-School" | "Private",
   "notes": "<observations about the data structure, any ambiguities, format issues>"
 }`;
 

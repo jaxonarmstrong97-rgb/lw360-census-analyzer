@@ -244,8 +244,9 @@ export default function SmartConfirmation({ rawData, aiResult, fileName, onGener
             <label className="block text-xs font-medium text-gray-600 mb-1">Company Type</label>
             <div className="flex gap-2">
               {[
-                { value: 'Private', label: 'Private Sector' },
-                { value: 'TRS', label: 'TX School District' },
+                { value: 'Private', label: 'Regular Business' },
+                { value: 'Non-FICA', label: 'Non-FICA School/Business' },
+                { value: 'FICA-School', label: 'FICA School District' },
               ].map(opt => (
                 <button
                   key={opt.value}

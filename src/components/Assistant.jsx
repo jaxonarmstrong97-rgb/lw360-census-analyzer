@@ -8,7 +8,7 @@ const STEP_HINTS = {
   ],
   2: [
     "Why did the AI map these columns?",
-    "What's the difference between Private and TRS?",
+    "What's the difference between the three company types?",
     "What are pre-tax deductions?",
   ],
   3: [

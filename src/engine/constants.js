@@ -52,17 +52,25 @@ export const PAY_PERIODS = {
   Monthly: 12,
 };
 
-export const EE_FEE_PRIVATE = {
-  Weekly: 20.71,
-  Biweekly: 41.42,
-  'Semi-Monthly': 44.87,
-  Monthly: 89.73,
+export const EE_FEE_MONTHLY = {
+  'Non-FICA': 80,
+  'FICA-School': 89,
+  Private: 89,
 };
 
-export const EE_FEE_MONTHLY_CAP_PRIVATE = 89.73;
-export const EE_FEE_MONTHLY_TRS = 80.00;
+export const ER_FEE_MONTHLY = {
+  'Non-FICA': 11,
+  'FICA-School': 25,
+  Private: 40,
+};
 
-export const ER_FEE_PRIVATE = 40.00;
-export const ER_FEE_TRS = 11.00;
+/**
+ * Get the per-period EE fee for a given company type and pay frequency.
+ */
+export function getEEFeePerPeriod(companyType, payFrequency) {
+  const monthly = EE_FEE_MONTHLY[companyType] || EE_FEE_MONTHLY.Private;
+  const periods = PAY_PERIODS[payFrequency] || 12;
+  return (monthly * 12) / periods;
+}
 
 export const BUFFER_AMOUNT = 5.00; // Monthly buffer for hourly employees

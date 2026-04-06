@@ -2,7 +2,7 @@ import { calculateFITSavings } from './taxCalculator.js';
 import { calculateEEFicaSavings, calculateERFicaSavings } from './ficaCalculator.js';
 import { checkEligibility } from './eligibility.js';
 import {
-  EE_FEE_PRIVATE, EE_FEE_MONTHLY_TRS, EE_FEE_MONTHLY_CAP_PRIVATE,
+  EE_FEE_MONTHLY, getEEFeePerPeriod,
   BUFFER_AMOUNT, PAY_PERIODS,
   SIMRP_PREMIUM_MONTHLY, SIMRP_PREMIUM_ANNUAL,
 } from './constants.js';
@@ -10,23 +10,15 @@ import {
 /**
  * Calculate the monthly employee fee.
  */
-function getMonthlyEEFee(companyType, payFrequency) {
-  if (companyType === 'TRS') return EE_FEE_MONTHLY_TRS;
-  const perPeriodFee = EE_FEE_PRIVATE[payFrequency] || EE_FEE_PRIVATE.Monthly;
-  const periods = PAY_PERIODS[payFrequency] || 12;
-  const annualFee = perPeriodFee * periods;
-  return Math.min(annualFee / 12, EE_FEE_MONTHLY_CAP_PRIVATE);
+function getMonthlyEEFee(companyType) {
+  return EE_FEE_MONTHLY[companyType] || EE_FEE_MONTHLY.Private;
 }
 
 /**
  * Get per-period employee fee.
  */
 export function getPerPeriodEEFee(companyType, payFrequency) {
-  if (companyType === 'TRS') {
-    const periods = PAY_PERIODS[payFrequency] || 12;
-    return EE_FEE_MONTHLY_TRS * 12 / periods;
-  }
-  return EE_FEE_PRIVATE[payFrequency] || EE_FEE_PRIVATE.Monthly;
+  return getEEFeePerPeriod(companyType, payFrequency);
 }
 
 /**
@@ -53,7 +45,7 @@ export function calculateEmployeeBenefit(employee, companyType, payFrequency) {
   const eligibility = checkEligibility(fitResult.monthlyFITSavings, ficaResult.monthlyFicaSavings, companyType);
 
   // Monthly EE fee
-  const monthlyEEFee = getMonthlyEEFee(companyType, payFrequency);
+  const monthlyEEFee = getMonthlyEEFee(companyType);
 
   // Buffer: only for hourly employees
   const isHourly = payType && payType.toLowerCase().startsWith('h');

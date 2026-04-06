@@ -3,10 +3,15 @@ import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatPercent, formatDate, getPayFrequencyLabel } from '../utils/formatters';
 import {
   SIMRP_PREMIUM_MONTHLY, SIMRP_PREMIUM_ANNUAL,
-  EE_FEE_MONTHLY_TRS, EE_FEE_MONTHLY_CAP_PRIVATE,
-  ER_FEE_PRIVATE, ER_FEE_TRS,
-  MEDICARE_RATE, SS_WAGE_BASE, PAY_PERIODS,
+  EE_FEE_MONTHLY, ER_FEE_MONTHLY,
+  MEDICARE_RATE, FICA_RATE, SS_WAGE_BASE, PAY_PERIODS,
 } from '../engine/constants';
+
+const COMPANY_TYPE_LABELS = {
+  'Non-FICA': 'Non-FICA School/Business',
+  'FICA-School': 'FICA School District',
+  Private: 'Private Sector',
+};
 
 // ── Brand Colors ──
 const NAVY = [26, 57, 92];
@@ -236,7 +241,7 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
 
   const erSavingsData = [
     ['Employer FICA Savings', formatCurrency(aggregates.totalAnnualERSavings)],
-    [`Less: Employer Fees ($${ER_FEE_PRIVATE}/EE/mo)`, `(${formatCurrency(aggregates.totalAnnualERFees)})`],
+    [`Less: Employer Fees ($${ER_FEE_MONTHLY.Private}/EE/mo)`, `(${formatCurrency(aggregates.totalAnnualERFees)})`],
     ['Net Employer Savings', formatCurrency(aggregates.totalNetAnnualERSavings)],
   ];
 
@@ -389,7 +394,7 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
 // TRS / SCHOOL DISTRICT FORMAT (Anton ISD Style)
 // ══════════════════════════════════════════════════════════════
 
-function generateTRSReport(doc, calcResults, companyName, payFrequency, reportDate) {
+function generateTRSReport(doc, calcResults, companyName, companyType, payFrequency, reportDate) {
   const { results, qualified, ineligible, aggregates } = calcResults;
 
   // Bracket distribution
@@ -563,7 +568,16 @@ function generateTRSReport(doc, calcResults, companyName, payFrequency, reportDa
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const trsText = `As a TRS-participating district, ${companyName} employees pay Medicare tax only (1.45%) and do not participate in Social Security (6.2%). This means the applicable FICA savings component is limited to Medicare. The district saves its matching 1.45% Medicare contribution on each enrolled employee's premium amount.`;
+  const typeLabel = COMPANY_TYPE_LABELS[companyType] || companyType;
+  const eeFee = EE_FEE_MONTHLY[companyType];
+  const erFee = ER_FEE_MONTHLY[companyType];
+  const isNonFICA = companyType === 'Non-FICA';
+  const ficaLabel = isNonFICA ? 'Medicare only (1.45%)' : 'full FICA (7.65%)';
+  const ficaRateUsed = isNonFICA ? MEDICARE_RATE : FICA_RATE;
+
+  const trsText = isNonFICA
+    ? `As a Non-FICA entity, ${companyName} employees pay Medicare tax only (1.45%) and do not participate in Social Security (6.2%). This means the applicable FICA savings component is limited to Medicare. The employer saves its matching 1.45% Medicare contribution on each enrolled employee's premium amount.`
+    : `As a FICA-participating school district, ${companyName} employees pay full FICA (7.65% = 6.2% SS + 1.45% Medicare). The district saves its matching FICA contribution on each enrolled employee's premium amount.`;
   const splitTrs = doc.splitTextToSize(trsText, PAGE_W - 2 * MARGIN);
   doc.text(splitTrs, MARGIN, y);
 
@@ -579,10 +593,10 @@ function generateTRSReport(doc, calcResults, companyName, payFrequency, reportDa
   // Component Table
   const componentData = [
     ['Monthly Premium', formatCurrency(SIMRP_PREMIUM_MONTHLY)],
-    ['Employee Fee', `${formatCurrency(EE_FEE_MONTHLY_TRS)}/month`],
-    ['Employer Fee', `${formatCurrency(ER_FEE_TRS)}/employee/month`],
-    ['Medicare Rate (TRS)', '1.45% (no Social Security)'],
-    ['Employee Medicare Savings', `${formatCurrency(SIMRP_PREMIUM_MONTHLY * MEDICARE_RATE)}/month`],
+    ['Employee Fee', `${formatCurrency(eeFee)}/month`],
+    ['Employer Fee', `${formatCurrency(erFee)}/employee/month`],
+    [isNonFICA ? 'Medicare Rate' : 'FICA Rate', ficaLabel],
+    [isNonFICA ? 'Employee Medicare Savings' : 'Employee FICA Savings', `${formatCurrency(SIMRP_PREMIUM_MONTHLY * ficaRateUsed)}/month`],
   ];
 
   autoTable(doc, {
@@ -709,11 +723,11 @@ function generateTRSReport(doc, calcResults, companyName, payFrequency, reportDa
       ineligText += `, ${zeroFIT.length} show $0 federal income tax withholding`;
     }
     if (insufficientFIT.length > 0) {
-      ineligText += ` and ${insufficientFIT.length} have FIT savings that are insufficient to cover the $${EE_FEE_MONTHLY_TRS}/month employee fee`;
+      ineligText += ` and ${insufficientFIT.length} have FIT savings that are insufficient to cover the $${eeFee}/month employee fee`;
     }
     ineligText += '. These employees primarily file MFJ or HoH with standard deductions exceeding taxable income.';
     if (insufficientFIT.length > 0) {
-      ineligText += ` ${insufficientFIT.length} employee(s) have some FIT but total savings do not exceed the $${EE_FEE_MONTHLY_TRS}/month fee.`;
+      ineligText += ` ${insufficientFIT.length} employee(s) have some FIT but total savings do not exceed the $${eeFee}/month fee.`;
     }
     const splitInelig = doc.splitTextToSize(ineligText, PAGE_W - 2 * MARGIN);
     doc.text(splitInelig, MARGIN, y);
@@ -879,7 +893,7 @@ function generateTRSReport(doc, calcResults, companyName, payFrequency, reportDa
     ['Average FIT Savings per Employee', `${formatCurrency(avgFIT)}/month`],
     ['Average Medicare Savings per Employee', `${formatCurrency(avgMedicare)}/month`],
     ['Average Gross Savings per Employee', `${formatCurrency(avgGross)}/month`],
-    ['Less: Employee Fee', `(${formatCurrency(EE_FEE_MONTHLY_TRS)})/month`],
+    ['Less: Employee Fee', `(${formatCurrency(eeFee)})/month`],
     ['Average Net Benefit per Employee', `${formatCurrency(aggregates.averageMonthlyBenefit)}/month`],
     ['Total Monthly Employee Savings (All Eligible)', `${formatCurrency(totalNetBenefit)}/month`],
     ['Total Annual Employee Savings', `${formatCurrency(aggregates.totalAnnualEEBenefit)}/year`],
@@ -927,18 +941,24 @@ function generateTRSReport(doc, calcResults, companyName, payFrequency, reportDa
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const districtText = `${companyName} saves the employer-side Medicare match (1.45%) on the $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} premium for each enrolled employee, offset by the $${ER_FEE_TRS}/employee/month program fee. The district is cash-flow positive from day one.`;
+  const districtText = isNonFICA
+    ? `${companyName} saves the employer-side Medicare match (1.45%) on the $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} premium for each enrolled employee, offset by the $${erFee}/employee/month program fee. The employer is cash-flow positive from day one.`
+    : `${companyName} saves the employer-side FICA match (7.65%) on the $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} premium for each enrolled employee, offset by the $${erFee}/employee/month program fee. The district is cash-flow positive from day one.`;
   const splitDistrict = doc.splitTextToSize(districtText, PAGE_W - 2 * MARGIN);
   doc.text(splitDistrict, MARGIN, y);
   y += splitDistrict.length * 4 + 6;
 
   // District Financial Impact table
-  const annualMedicareSavings = SIMRP_PREMIUM_MONTHLY * MEDICARE_RATE * aggregates.totalQualified * 12;
-  const annualERFees = ER_FEE_TRS * aggregates.totalQualified * 12;
+  const annualFicaSavingsER = SIMRP_PREMIUM_MONTHLY * ficaRateUsed * aggregates.totalQualified * 12;
+  const annualERFees = erFee * aggregates.totalQualified * 12;
+
+  const savingsLabel = isNonFICA
+    ? `Medicare Savings (1.45% \u00D7 $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`
+    : `FICA Savings (7.65% \u00D7 $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`;
 
   const districtData = [
-    [`Medicare Savings (1.45% \u00D7 $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`, formatCurrency(annualMedicareSavings)],
-    [`Less: LW360 Employer Fees ($${ER_FEE_TRS}/EE \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`, `(${formatCurrency(annualERFees)})`],
+    [savingsLabel, formatCurrency(annualFicaSavingsER)],
+    [`Less: LW360 Employer Fees ($${erFee}/EE \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`, `(${formatCurrency(annualERFees)})`],
     ['Net Annual District Savings', formatCurrency(aggregates.totalNetAnnualERSavings)],
   ];
 
@@ -1040,8 +1060,8 @@ function generateTRSReport(doc, calcResults, companyName, payFrequency, reportDa
 export function generateEligibilityReport(calcResults, companyName, companyType, payFrequency, reportDate) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
 
-  if (companyType === 'TRS') {
-    return generateTRSReport(doc, calcResults, companyName, payFrequency, reportDate);
+  if (companyType === 'Non-FICA' || companyType === 'FICA-School') {
+    return generateTRSReport(doc, calcResults, companyName, companyType, payFrequency, reportDate);
   } else {
     return generatePrivateReport(doc, calcResults, companyName, payFrequency, reportDate);
   }

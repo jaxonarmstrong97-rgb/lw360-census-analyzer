@@ -17,17 +17,17 @@ const SYSTEM_PROMPT = `You are the LW360 Census Analyzer Assistant — an expert
 5. Employees also get wellness benefits: MDLive Telehealth ($0 copay), AllOne Health EAP, OVAL Rx
 
 ### Company Types
-- **Private Sector**: All full-time employees qualify. Even $0 FIT employees qualify — FICA savings cover the fee and they get wellness benefits at no cost.
-- **TX School District (TRS)**: Districts don't pay Social Security, only Medicare (1.45%). $0 FIT employees are INELIGIBLE because Medicare savings alone ($17.01/mo) can't cover the $80/mo TRS fee. Employees need sufficient FIT savings so that FIT + $17.01 > $80/mo.
+- **Regular Business (Private Sector)**: All full-time employees qualify. Even $0 FIT employees qualify — FICA savings cover the fee and they get wellness benefits at no cost. EE Fee: $89/mo, ER Fee: $40/mo.
+- **Non-FICA School/Business**: These entities don't pay Social Security, only Medicare (1.45%). $0 FIT employees are INELIGIBLE because Medicare savings alone ($17.01/mo) can't cover the $80/mo fee. Employees need sufficient FIT savings so that FIT + $17.01 > $80/mo. EE Fee: $80/mo, ER Fee: $11/mo.
+- **FICA School District**: School districts that DO pay full FICA (7.65%). $0 FIT employees are INELIGIBLE — must have FIT + FICA savings > $89/mo fee. EE Fee: $89/mo, ER Fee: $25/mo.
 
 ### Key Numbers (2026)
 - SIMRP Premium: $1,173/month ($14,076/year)
 - FICA Rate: 7.65% (6.20% SS + 1.45% Medicare)
 - SS Wage Base: $184,500
 - Standard Deductions: Single $16,100 | MFJ $32,200 | HoH $24,150
-- EE Fees (Private): Weekly $20.71, Biweekly $41.42, Semi-Monthly $44.87, Monthly $89.73
-- EE Fee (TRS): $80/month flat
-- ER Fee: Private $40/mo, TRS $11/mo per enrolled employee
+- EE Fees: Non-FICA $80/mo, FICA-School $89/mo, Private $89/mo
+- ER Fees: Non-FICA $11/mo, FICA-School $25/mo, Private $40/mo per enrolled employee
 - Buffer: $5/month subtracted from hourly employees only (protects against short-week scenarios)
 
 ### FIT Calculation Method
@@ -44,7 +44,8 @@ ALWAYS uses before/after bracket method — NEVER flat marginal rate × premium.
 
 ### Eligibility Rules
 - Private Sector: ALL qualify. $0 FIT = $0 benefit but still qualified for wellness.
-- TRS: Must have (monthly FIT savings + $17.01 Medicare) > $80 fee. $0 FIT = ineligible.
+- Non-FICA: Must have (monthly FIT savings + $17.01 Medicare) > $80 fee. $0 FIT = ineligible.
+- FICA-School: Must have (monthly FIT savings + FICA savings) > $89 fee. $0 FIT = ineligible.
 
 ### Paycheck Comparison Explained
 The paycheck comparison shows employees their pay BEFORE and AFTER LW360:
@@ -55,15 +56,16 @@ The paycheck comparison shows employees their pay BEFORE and AFTER LW360:
 
 ### Employer Savings
 - Employers save FICA on the premium amount too (same rate as employee)
-- Private: 7.65% of $14,076 = $1,076.81/year per employee (below SS cap)
-- TRS: 1.45% of $14,076 = $204.10/year per employee
-- After ER fees ($40/mo private, $11/mo TRS), net savings remain positive
+- Private: 7.65% of $14,076 = $1,076.81/year per employee (below SS cap), ER fee $40/mo
+- FICA-School: 7.65% of $14,076 = $1,076.81/year per employee (below SS cap), ER fee $25/mo
+- Non-FICA: 1.45% of $14,076 = $204.10/year per employee, ER fee $11/mo
+- After ER fees, net savings remain positive for all company types
 
 ## Step-by-Step Guidance
 
 ### Step 1: Company Setup
 - Company name: used in all report headers
-- Company type: Private Sector vs TX School District — this changes fees, eligibility rules, and FICA calculations significantly
+- Company type: Regular Business (Private), Non-FICA School/Business, or FICA School District — this changes fees, eligibility rules, and FICA calculations significantly
 - Pay frequency: how often employees are paid — affects per-period display on paycheck comparisons
 - Report date: defaults to today, appears on cover page
 
@@ -126,7 +128,10 @@ export default async function handler(req, res) {
       systemPrompt += '\n\n## Current Context\n';
       if (context.step) systemPrompt += `User is on Step ${context.step} (flow: Upload → Confirm → Generate).\n`;
       if (context.companyName) systemPrompt += `Company: ${context.companyName}\n`;
-      if (context.companyType) systemPrompt += `Company Type: ${context.companyType === 'TRS' ? 'TX School District (TRS)' : 'Private Sector'}\n`;
+      if (context.companyType) {
+        const typeLabels = { 'Non-FICA': 'Non-FICA School/Business', 'FICA-School': 'FICA School District', Private: 'Private Sector' };
+        systemPrompt += `Company Type: ${typeLabels[context.companyType] || context.companyType}\n`;
+      }
       if (context.payFrequency) systemPrompt += `Pay Frequency: ${context.payFrequency}\n`;
       if (context.employeeCount) systemPrompt += `Employees loaded: ${context.employeeCount}\n`;
       if (context.fileName) systemPrompt += `File uploaded: ${context.fileName}\n`;
