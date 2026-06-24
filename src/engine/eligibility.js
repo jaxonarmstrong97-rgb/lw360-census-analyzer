@@ -42,10 +42,21 @@ export function checkEligibility(monthlyFITSavings, monthlyFICASavings, companyT
     return { eligible: true, reason: 'Qualified' };
   }
 
-  // Private sector: ALL employees qualify
-  // $0 FIT still qualifies — FICA covers the fee, employee gets wellness benefits
+  // Private sector: pays full FICA. Eligible only if FIT + (real, income-
+  // dependent) FICA savings cover the fee. This previously returned eligible
+  // UNCONDITIONALLY, which enrolled private employees whose take-home would drop
+  // (e.g. $0/low-income part-timers whose real SS savings are ~$0). Uses the
+  // PASSED monthlyFICASavings (income-dependent), not a flat premium-based figure.
+  if ((monthlyFITSavings + monthlyFICASavings) < eeFee) {
+    return {
+      eligible: false,
+      reason: monthlyFITSavings <= 0
+        ? "$0 FIT — FICA savings can't cover the program fee"
+        : `Insufficient savings ($${(monthlyFITSavings + monthlyFICASavings).toFixed(2)}/mo) to cover $${eeFee}/mo fee`,
+    };
+  }
   return {
     eligible: true,
-    reason: monthlyFITSavings <= 0 ? 'Qualified — $0 FIT benefit, wellness benefits at no cost' : 'Qualified',
+    reason: monthlyFITSavings <= 0 ? 'Qualified — $0 FIT, FICA savings cover the fee' : 'Qualified',
   };
 }
