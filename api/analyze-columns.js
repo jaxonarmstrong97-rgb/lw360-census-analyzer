@@ -67,6 +67,10 @@ export default async function handler(req, res) {
   if (!apiKey) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
   }
+  // Model is env-configurable. Default to a current model — the previous hard-coded
+  // 'claude-sonnet-4-20250514' is a DEAD id (deprecated, retires 2026-06-15) and would
+  // 404 the API. Set ANTHROPIC_MODEL in Vercel to override without a code change.
+  const model = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 
   try {
     const { rawRows, fileName } = req.body;
@@ -110,7 +114,7 @@ Return JSON with this exact structure:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model,
         max_tokens: 1000,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],

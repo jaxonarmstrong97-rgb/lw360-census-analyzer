@@ -1,4 +1,71 @@
-# React + Vite
+# LW360 Census Analyzer
+
+Client-side census analysis tool (AI column mapping + SIMRP eligibility scoring + branded PDFs).
+
+## Environment variables (Vercel)
+
+| Var | Purpose |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Server-side key for `api/analyze-columns.js` and `api/chat.js` (never exposed to the client). |
+| `ANTHROPIC_MODEL` | Optional. Overrides the model id used by both API functions. Defaults to `claude-opus-4-8`. The old hard-coded `claude-sonnet-4-20250514` was a dead id that would 404 the API — set this to roll the model forward without a code change. |
+
+## "Save to LW360 pipeline" handoff (NOT wired — Jaxon call)
+
+The monorepo (`lw360-central`) exposes a service-role edge function `save-analysis`
+that ingests an analysis summary and upserts an `organizations` row (pipeline_stage
+`Analysis Ready`), so analyzed prospects flow into the platform instead of evaporating
+into a downloaded PDF. Wiring the analyzer to POST to it is deliberately left OFF until
+Jaxon greenlights it.
+
+To enable later:
+
+1. In the monorepo, set the shared secret and deploy the function (see that repo's
+   deploy steps). The analyzer needs the SAME secret value.
+2. Add these Vercel env vars to THIS app:
+   - `LW360_INGEST_URL` = `https://<project-ref>.functions.supabase.co/save-analysis`
+   - `ANALYZER_INGEST_SECRET` = the shared secret (same value as the monorepo).
+3. Add a thin server-side proxy (do NOT expose the secret to the browser) — e.g.
+   `api/save-to-pipeline.js`:
+
+   ```js
+   export default async function handler(req, res) {
+     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+     const url = process.env.LW360_INGEST_URL;
+     const secret = process.env.ANALYZER_INGEST_SECRET;
+     if (!url || !secret) return res.status(503).json({ error: 'Pipeline handoff not configured' });
+
+     // Summary figures only — NO per-employee rows, NO SSNs.
+     const { companyName, aggregates, contact } = req.body;
+     const payload = {
+       company_name: companyName,
+       headcount: aggregates?.totalEmployees ?? null,
+       eligible_count: aggregates?.totalQualified ?? null,
+       est_employer_fica_savings: aggregates?.totalNetAnnualERSavings ?? null,
+       avg_net_benefit: aggregates?.averageMonthlyBenefit ?? null,
+       scored_at: new Date().toISOString(),
+       source: 'census-analyzer',
+       // optional business contact only (name/email/phone) — never SSNs:
+       contact: contact || undefined,
+     };
+
+     const r = await fetch(url, {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json', 'x-analyzer-secret': secret },
+       body: JSON.stringify(payload),
+     });
+     const data = await r.json().catch(() => ({}));
+     return res.status(r.status).json(data);
+   }
+   ```
+
+   Then a "Save to LW360 pipeline" button in `OutputGenerator.jsx` would POST
+   `{ companyName, aggregates: results.aggregates }` to `/api/save-to-pipeline`.
+   The edge function upserts by company name and is additive-only (it never
+   overwrites a real org's stage/contact/broker).
+
+---
+
+## React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
