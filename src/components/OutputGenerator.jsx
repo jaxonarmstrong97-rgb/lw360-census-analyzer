@@ -14,8 +14,28 @@ export default function OutputGenerator({ employees, companySetup, onBack, onRes
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
   const [downloads, setDownloads] = useState([]);
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
+  const [saveMsg, setSaveMsg] = useState('');
 
   const { companyName, companyType, payFrequency, reportDate } = companySetup;
+
+  const handleSaveToPipeline = useCallback(async () => {
+    if (!results?.aggregates) return;
+    setSaveState('saving'); setSaveMsg('');
+    try {
+      const r = await fetch('/api/save-to-pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyName, companyType, aggregates: results.aggregates }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setSaveState('error'); setSaveMsg(data.error || 'Could not save.'); return; }
+      setSaveState('saved');
+      setSaveMsg(data.created ? 'Added to the LW360 pipeline.' : 'Updated in the LW360 pipeline.');
+    } catch {
+      setSaveState('error'); setSaveMsg('Could not reach the pipeline. Try again.');
+    }
+  }, [results, companyName, companyType]);
 
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
@@ -218,6 +238,21 @@ export default function OutputGenerator({ employees, companySetup, onBack, onRes
               <span className="text-gray-600">Avg Monthly Benefit:</span>
               <span className="ml-2 font-semibold">{formatCurrency(results.aggregates.averageMonthlyBenefit)}</span>
             </div>
+          </div>
+
+          {/* Save this analysis onto the LW360 pipeline (internal handoff). Summary
+              figures only — no per-employee rows, no SSNs. Additive on the platform. */}
+          <div className="mt-5 pt-4 border-t border-green-200 flex items-center gap-3 flex-wrap">
+            <button
+              onClick={handleSaveToPipeline}
+              disabled={saveState === 'saving' || saveState === 'saved'}
+              className="px-4 py-2 rounded-lg font-medium text-[#15233D] bg-[#7AC143] hover:brightness-95 disabled:opacity-60 disabled:cursor-default transition"
+            >
+              {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? '✓ Saved to pipeline' : 'Save to LW360 pipeline →'}
+            </button>
+            {saveMsg && (
+              <span className={`text-sm ${saveState === 'error' ? 'text-red-600' : 'text-green-700'}`}>{saveMsg}</span>
+            )}
           </div>
         </div>
       )}
