@@ -9,15 +9,20 @@ Client-side census analysis tool (AI column mapping + SIMRP eligibility scoring 
 | `ANTHROPIC_API_KEY` | Server-side key for `api/analyze-columns.js` and `api/chat.js` (never exposed to the client). |
 | `ANTHROPIC_MODEL` | Optional. Overrides the model id used by both API functions. Defaults to `claude-opus-4-8`. The old hard-coded `claude-sonnet-4-20250514` was a dead id that would 404 the API — set this to roll the model forward without a code change. |
 
-## "Save to LW360 pipeline" handoff (NOT wired — Jaxon call)
+## "Save to LW360 pipeline" handoff (CODE WIRED — env secrets pending)
+
+**Status update 2026-07-13:** the UI button ("Save to LW360 pipeline →" in
+`src/components/OutputGenerator.jsx`) and the server-side proxy (`api/save-to-pipeline.js`)
+were committed 2026-07-06, and the `save-analysis` edge function is deployed on the main
+Supabase project. The seam fails closed until the two Vercel env vars below are set —
+that is the only remaining activation step.
 
 The monorepo (`lw360-central`) exposes a service-role edge function `save-analysis`
 that ingests an analysis summary and upserts an `organizations` row (pipeline_stage
 `Analysis Ready`), so analyzed prospects flow into the platform instead of evaporating
-into a downloaded PDF. Wiring the analyzer to POST to it is deliberately left OFF until
-Jaxon greenlights it.
+into a downloaded PDF.
 
-To enable later:
+To activate:
 
 1. In the monorepo, set the shared secret and deploy the function (see that repo's
    deploy steps). The analyzer needs the SAME secret value.

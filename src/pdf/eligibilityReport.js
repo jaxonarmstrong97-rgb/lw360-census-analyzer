@@ -485,7 +485,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const summaryText = `Live Well 360 Health Strategy Advisors (LW360) has completed a comprehensive eligibility analysis for ${companyName} based on ${formatDate(reportDate)} payroll data. This report presents aggregate findings using the IRS-mandated marginal tax rate methodology per Publication 15-T.`;
+  const summaryText = `Live Well 360 Health Strategy Advisors (LW360) has completed a comprehensive eligibility analysis for ${companyName} based on ${formatDate(reportDate)} payroll data. This report presents aggregate findings using marginal tax rate methodology consistent with IRS Publication 15-T. All dollar figures are estimates; actual results vary by employee.`;
   const splitSummary = doc.splitTextToSize(summaryText, PAGE_W - 2 * MARGIN);
   doc.text(splitSummary, MARGIN, y);
   y += splitSummary.length * 4.5 + 6;
@@ -499,9 +499,9 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
 
   const statItems = [
     { value: `${aggregates.totalQualified}`, sub: `Eligible Employees (${formatPercent(aggregates.qualificationRate)})`, fill: [230, 255, 230], color: GREEN },
-    { value: formatCurrency(aggregates.totalAnnualEEBenefit), sub: 'Annual Employee Savings', fill: LIGHT_GRAY, color: NAVY },
-    { value: formatCurrency(aggregates.totalNetAnnualERSavings), sub: 'Annual District Savings (Net)', fill: LIGHT_GRAY, color: NAVY },
-    { value: `${formatCurrency(aggregates.averageMonthlyBenefit)}`, sub: 'Avg Monthly Benefit per Employee', fill: [230, 255, 230], color: GREEN },
+    { value: formatCurrency(aggregates.totalAnnualEEBenefit), sub: 'Est. Annual Employee Savings', fill: LIGHT_GRAY, color: NAVY },
+    { value: formatCurrency(aggregates.totalNetAnnualERSavings), sub: 'Est. Annual District Savings (Net)', fill: LIGHT_GRAY, color: NAVY },
+    { value: `${formatCurrency(aggregates.averageMonthlyBenefit)}`, sub: 'Est. Avg Monthly Benefit per Employee', fill: [230, 255, 230], color: GREEN },
     { value: `${formatCurrency(annualScholarship)}/year`, sub: 'Scholarship Fund', fill: [230, 240, 255], color: NAVY },
   ];
 
@@ -524,7 +524,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(5.5);
   doc.setTextColor(...TEXT_LIGHT);
   doc.setFont('helvetica', 'italic');
-  doc.text('Funded by LW360 at No Cost to the District or Employees', sStartX + 4 * (sBoxW + sGap) + sBoxW / 2, y, { align: 'center' });
+  doc.text('Scholarship fund provided by LW360', sStartX + 4 * (sBoxW + sGap) + sBoxW / 2, y, { align: 'center' });
 
   y += 10;
 
@@ -1003,7 +1003,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const scholarText = `In addition to direct tax savings, LW360 funds a scholarship program for participating districts at $${scholarshipPerEE.toFixed(2)} per enrolled employee per month. This scholarship fund is fully funded by LW360 at no cost to the district or its employees.`;
+  const scholarText = `In addition to estimated tax savings, LW360 funds a scholarship program for participating districts at $${scholarshipPerEE.toFixed(2)} per enrolled employee per month. The scholarship fund is provided by LW360.`;
   const splitScholar = doc.splitTextToSize(scholarText, PAGE_W - 2 * MARGIN);
   doc.text(splitScholar, MARGIN, y);
   y += splitScholar.length * 4 + 5;
