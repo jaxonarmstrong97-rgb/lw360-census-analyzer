@@ -158,7 +158,11 @@ Return JSON with this exact structure:
     }
 
     const data = await response.json();
-    const reply = data.content[0].text;
+    // Read the text blocks by type: newer models can put thinking blocks first.
+    const reply = (Array.isArray(data.content) ? data.content : [])
+      .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('');
 
     // Extract JSON from response (handle possible markdown wrapping)
     const cleaned = reply.replace(/```json|```/g, '').trim();

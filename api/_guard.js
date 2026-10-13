@@ -24,15 +24,15 @@ function clientIp(req) {
 
 export function isSameSite(req) {
   const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  // Current browsers set Sec-Fetch-Site themselves (page scripts can't), so it decides.
+  // This also covers a same-origin POST whose Origin is "null" under a strict
+  // referrer policy.
+  if (fetchSite) return fetchSite === 'same-origin';
+  // Older browsers: the Origin they send on POST must match this host.
   const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
   const origin = String(req.headers.origin || '');
-  let originHost = '';
-  if (origin) {
-    try { originHost = new URL(origin).host.toLowerCase(); } catch { return false; }
-  }
-  if (fetchSite && fetchSite !== 'same-origin') return false; // a browser on another site
-  if (originHost) return host !== '' && originHost === host;   // browsers send Origin on POST
-  return fetchSite === 'same-origin';                          // no Origin: only an explicit same-origin marker
+  if (!origin || !host) return false;
+  try { return new URL(origin).host.toLowerCase() === host; } catch { return false; }
 }
 
 function rateLimited(req, limitPerMinute) {

@@ -206,8 +206,13 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
+    // Read the text blocks by type: newer models can put thinking blocks first.
+    const reply = (Array.isArray(data.content) ? data.content : [])
+      .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('');
     return res.status(200).json({
-      response: data.content[0].text,
+      response: reply || "I couldn't put an answer together. Please try asking again.",
     });
   } catch (err) {
     console.error('Chat handler error:', err);
