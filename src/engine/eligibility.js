@@ -1,62 +1,36 @@
-import { EE_FEE_MONTHLY, MEDICARE_RATE, FICA_RATE, SIMRP_PREMIUM_ANNUAL } from './constants.js';
+// Full program test (Jaxon's rule, 2026-10-12, the same as the Benefit Analysis): an employee
+// is in the full program when the premium fits in their taxable pay and the net benefit is
+// above zero, so the paycheck does not go down. Otherwise they get the wellness benefits only.
+//
+// What that means by employer type:
+// - Non-FICA (TRS districts): Medicare alone saves $17.01 a month, short of the fee, so an
+//   employee with no federal withholding is never in the full program.
+// - FICA-paying districts and private employers: 7.65% of the premium ($89.73 a month) covers
+//   the $89 fee, so an employee with no federal withholding is in the full program as long as
+//   the net is above zero. (Before 2026-10-12 a FICA district treated $0 FIT as ineligible.)
 
-/**
- * Determine eligibility for the SIMRP program.
- */
-export function checkEligibility(monthlyFITSavings, monthlyFICASavings, companyType) {
-  const medicareSavingsMonthly = (SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE) / 12;
-  const ficaSavingsMonthly = (SIMRP_PREMIUM_ANNUAL * FICA_RATE) / 12;
-  const eeFee = EE_FEE_MONTHLY[companyType] || EE_FEE_MONTHLY.Private;
+const money = (v) => `$${Number(v).toFixed(2)}`;
 
-  if (companyType === 'Non-FICA') {
-    // Non-FICA: $0 FIT = ineligible. Must have FIT + Medicare > $80/mo fee
-    if (monthlyFITSavings <= 0) {
-      return {
-        eligible: false,
-        reason: '$0 FIT — cannot cover $80/mo fee with only Medicare savings',
-      };
-    }
-    if ((monthlyFITSavings + medicareSavingsMonthly) <= eeFee) {
-      return {
-        eligible: false,
-        reason: `Insufficient savings ($${(monthlyFITSavings + medicareSavingsMonthly).toFixed(2)}/mo) to cover $${eeFee}/mo fee`,
-      };
-    }
-    return { eligible: true, reason: 'Qualified' };
+export function checkEligibility({ fits, fitSavings, taxSavings, net, eeFee, companyType }) {
+  if (!fits) {
+    return { eligible: false, reason: 'Taxable pay is below the premium, so the deduction cannot run' };
   }
-
-  if (companyType === 'FICA-School') {
-    // FICA-School: $0 FIT = ineligible. Must have FIT + FICA > $89/mo fee
-    if (monthlyFITSavings <= 0) {
-      return {
-        eligible: false,
-        reason: '$0 FIT — cannot cover $89/mo fee with only FICA savings',
-      };
-    }
-    if ((monthlyFITSavings + ficaSavingsMonthly) <= eeFee) {
-      return {
-        eligible: false,
-        reason: `Insufficient savings ($${(monthlyFITSavings + ficaSavingsMonthly).toFixed(2)}/mo) to cover $${eeFee}/mo fee`,
-      };
-    }
-    return { eligible: true, reason: 'Qualified' };
+  if (net > 0) {
+    return {
+      eligible: true,
+      reason: fitSavings > 0 ? 'Net benefit above zero' : 'No federal withholding; payroll tax savings cover the fee',
+    };
   }
-
-  // Private sector: pays full FICA. Eligible only if FIT + (real, income-
-  // dependent) FICA savings cover the fee. This previously returned eligible
-  // UNCONDITIONALLY, which enrolled private employees whose take-home would drop
-  // (e.g. $0/low-income part-timers whose real SS savings are ~$0). Uses the
-  // PASSED monthlyFICASavings (income-dependent), not a flat premium-based figure.
-  if ((monthlyFITSavings + monthlyFICASavings) < eeFee) {
+  if (fitSavings <= 0) {
     return {
       eligible: false,
-      reason: monthlyFITSavings <= 0
-        ? "$0 FIT — FICA savings can't cover the program fee"
-        : `Insufficient savings ($${(monthlyFITSavings + monthlyFICASavings).toFixed(2)}/mo) to cover $${eeFee}/mo fee`,
+      reason: companyType === 'Non-FICA'
+        ? `No federal withholding; Medicare savings alone (${money(taxSavings)} a pay period) are below the ${money(eeFee)} fee`
+        : `No federal withholding; payroll tax savings (${money(taxSavings)} a pay period) do not exceed the ${money(eeFee)} fee`,
     };
   }
   return {
-    eligible: true,
-    reason: monthlyFITSavings <= 0 ? 'Qualified — $0 FIT, FICA savings cover the fee' : 'Qualified',
+    eligible: false,
+    reason: `Savings (${money(fitSavings + taxSavings)} a pay period) do not exceed the ${money(eeFee)} fee`,
   };
 }

@@ -1,10 +1,9 @@
-import { calculateFITSavings } from './taxCalculator.js';
-import { calculateEEFicaSavings, calculateERFicaSavings } from './ficaCalculator.js';
+import { fitPerPeriod, adjustedAnnualWage, marginalRate, cents } from './withholding15T.js';
+import { payrollTaxSavingsPerPeriod } from './ficaCalculator.js';
 import { checkEligibility } from './eligibility.js';
 import {
-  EE_FEE_MONTHLY, getEEFeePerPeriod,
-  BUFFER_AMOUNT, PAY_PERIODS,
-  SIMRP_PREMIUM_MONTHLY, SIMRP_PREMIUM_ANNUAL,
+  EE_FEE_MONTHLY, ER_FEE_MONTHLY, getEEFeePerPeriod, PAY_PERIODS,
+  SIMRP_PREMIUM_MONTHLY, SIMRP_PREMIUM_ANNUAL, SS_RATE, MEDICARE_RATE, SS_WAGE_BASE,
 } from './constants.js';
 
 /**
@@ -21,58 +20,60 @@ export function getPerPeriodEEFee(companyType, payFrequency) {
   return getEEFeePerPeriod(companyType, payFrequency);
 }
 
+const W4_STATUS = { Single: 'S', MFJ: 'M', HoH: 'H' };
+
 /**
- * Run full benefit calculation for a single employee.
+ * Run the full benefit calculation for one employee.
+ *
+ * Since 2026-10-13 this is the Benefit Analysis method, per pay period: federal withholding
+ * from IRS Publication 15-T before and after the premium (withholding15T.js), payroll tax
+ * savings with the exact Social Security wage-base method, the fee for the pay period, and the
+ * full-program test (premium fits, net above zero). There is no buffer. Monthly and annual
+ * figures are the per-period figures times the pay periods in a year.
  */
 export function calculateEmployeeBenefit(employee, companyType, payFrequency) {
   const {
     annualGross,
     filingStatus,
-    payType,
     existingPreTaxDeductions = 0,
   } = employee;
 
-  // FIT savings (before/after bracket method)
-  const fitResult = calculateFITSavings(annualGross, filingStatus, existingPreTaxDeductions);
-
-  // FICA savings
-  const ficaResult = calculateEEFicaSavings(annualGross, companyType);
-
-  // ER savings
-  const erResult = calculateERFicaSavings(annualGross, companyType);
-
-  // Eligibility
-  const eligibility = checkEligibility(fitResult.monthlyFITSavings, ficaResult.monthlyFicaSavings, companyType);
-
-  // Monthly EE fee
-  const monthlyEEFee = getMonthlyEEFee(companyType);
-
-  // Buffer: only for hourly employees
-  const isHourly = payType && payType.toLowerCase().startsWith('h');
-  const bufferApplied = isHourly;
-  const bufferAmount = bufferApplied ? BUFFER_AMOUNT : 0;
-
-  // Monthly benefit
-  const monthlyBenefitPreBuffer = fitResult.monthlyFITSavings + ficaResult.monthlyFicaSavings - monthlyEEFee;
-  const monthlyBenefit = monthlyBenefitPreBuffer - bufferAmount;
-  const annualBenefit = monthlyBenefit * 12;
-
-  // Per-period amounts
   const periods = PAY_PERIODS[payFrequency] || 12;
-  const perPeriodGross = annualGross / periods;
-  const perPeriodPremium = SIMRP_PREMIUM_ANNUAL / periods;
-  const perPeriodEEFee = getPerPeriodEEFee(companyType, payFrequency);
-  const perPeriodExistingDeductions = existingPreTaxDeductions / periods;
-  const perPeriodFITBefore = fitResult.fitBefore / periods;
-  const perPeriodFITAfter = fitResult.fitAfter / periods;
-  const perPeriodFITSavings = fitResult.annualFITSavings / periods;
-  const perPeriodFICASavings = ficaResult.annualFicaSavings / periods;
+  // Census files rarely carry W-4 detail: assume a 2020-or-later form with Step 2 unchecked and
+  // no Step 3 or 4 entries, unless the employee record supplies a w4 object.
+  const w4 = { status: W4_STATUS[filingStatus] || 'S', ...(employee.w4 || {}) };
 
-  // SS and Medicare breakdown per period
-  const annualSSBefore = Math.min(annualGross - existingPreTaxDeductions, 184500) * 0.062;
-  const annualSSAfter = Math.min(annualGross - existingPreTaxDeductions - SIMRP_PREMIUM_ANNUAL, 184500) * 0.062;
-  const annualMedicareBefore = (annualGross - existingPreTaxDeductions) * 0.0145;
-  const annualMedicareAfter = (annualGross - existingPreTaxDeductions - SIMRP_PREMIUM_ANNUAL) * 0.0145;
+  // Federal taxable wages; also used as the payroll tax wages (the census doesn't separate them).
+  const taxableAnnual = Math.max(0, annualGross - existingPreTaxDeductions);
+  const wages = cents(taxableAnnual / periods);
+  const premium = cents((SIMRP_PREMIUM_MONTHLY * 12) / periods);
+  const fits = wages >= premium;
+
+  // Federal income tax withholding, before and after the premium.
+  const fitBefore = fitPerPeriod(wages, w4, periods);
+  const fitAfter = fitPerPeriod(Math.max(wages - premium, 0), w4, periods);
+  const fitSavings = fits ? cents(fitBefore - fitAfter) : 0;
+
+  // Payroll tax savings (the employer saves the same amount).
+  const tax = fits ? payrollTaxSavingsPerPeriod(taxableAnnual, companyType, periods) : { total: 0, socialSecurity: 0, medicare: 0 };
+  const eeFee = getEEFeePerPeriod(companyType, payFrequency);
+  const net = cents(fitSavings + tax.total - eeFee);
+
+  const eligibility = checkEligibility({ fits, fitSavings, taxSavings: tax.total, net, eeFee, companyType });
+
+  const perYear = (v) => cents(v * periods);
+  const perMonth = (v) => cents((v * periods) / 12);
+
+  // Paycheck lines. "After" is "before" less the engine's savings, so the paycheck comparison
+  // adds up to exactly the net benefit.
+  const ssBefore = companyType === 'Non-FICA' ? 0 : cents((Math.min(taxableAnnual, SS_WAGE_BASE) * SS_RATE) / periods);
+  const medicareBefore = cents(wages * MEDICARE_RATE);
+
+  // Employer: the same payroll tax savings, less the employer fee. No employee shows negative
+  // employer savings (LW360 rule), so the net is floored at zero per employee.
+  const erFee = ER_FEE_MONTHLY[companyType] || ER_FEE_MONTHLY.Private;
+  const annualERSavings = perYear(tax.total);
+  const netAnnualERSavings = Math.max(0, cents(annualERSavings - erFee * 12));
 
   return {
     name: employee.name,
@@ -81,30 +82,35 @@ export function calculateEmployeeBenefit(employee, companyType, payFrequency) {
     annualGross,
     existingPreTaxDeductions,
 
-    // FIT
-    taxableIncomeBefore: fitResult.taxableIncomeBefore,
-    taxableIncomeAfter: fitResult.taxableIncomeAfter,
-    annualFITBefore: fitResult.fitBefore,
-    annualFITAfter: fitResult.fitAfter,
-    annualFITSavings: fitResult.annualFITSavings,
-    monthlyFITSavings: fitResult.monthlyFITSavings,
-    marginalRate: fitResult.marginalRateBefore,
+    // Federal income tax (annual figures are per period times the pay periods)
+    taxableIncomeBefore: adjustedAnnualWage(wages, w4, periods),
+    taxableIncomeAfter: adjustedAnnualWage(Math.max(wages - premium, 0), w4, periods),
+    annualFITBefore: perYear(fitBefore),
+    annualFITAfter: perYear(fitAfter),
+    annualFITSavings: perYear(fitSavings),
+    monthlyFITSavings: perMonth(fitSavings),
+    marginalRate: marginalRate(wages, w4, periods),
 
-    // FICA
-    annualFICASavings: ficaResult.annualFicaSavings,
-    monthlyFICASavings: ficaResult.monthlyFicaSavings,
-    ficaRateUsed: ficaResult.rateUsed,
+    // Payroll tax (FICA)
+    annualFICASavings: perYear(tax.total),
+    monthlyFICASavings: perMonth(tax.total),
+    ficaRateUsed: companyType === 'Non-FICA' ? MEDICARE_RATE : (tax.socialSecurity > 0 ? SS_RATE + MEDICARE_RATE : MEDICARE_RATE),
 
-    // ER
-    ...erResult,
+    // Employer
+    annualERSavings,
+    monthlyERSavings: perMonth(tax.total),
+    annualERFee: erFee * 12,
+    monthlyERFee: erFee,
+    netAnnualERSavings,
+    netMonthlyERSavings: cents(netAnnualERSavings / 12),
 
-    // Fees & benefit
-    monthlyEEFee,
-    bufferApplied,
-    bufferAmount,
-    monthlyBenefitPreBuffer,
-    monthlyBenefit: eligibility.eligible ? monthlyBenefit : 0,
-    annualBenefit: eligibility.eligible ? annualBenefit : 0,
+    // Fees & benefit (bufferApplied is kept for older exports; there is no buffer)
+    monthlyEEFee: getMonthlyEEFee(companyType),
+    bufferApplied: false,
+    bufferAmount: 0,
+    monthlyBenefitPreBuffer: perMonth(net),
+    monthlyBenefit: eligibility.eligible ? perMonth(net) : 0,
+    annualBenefit: eligibility.eligible ? perYear(net) : 0,
 
     // Eligibility
     eligible: eligibility.eligible,
@@ -113,19 +119,20 @@ export function calculateEmployeeBenefit(employee, companyType, payFrequency) {
     // Per-period breakdown
     periods,
     payFrequency,
-    perPeriodGross,
-    perPeriodPremium,
-    perPeriodReimbursement: perPeriodPremium, // always 100% of premium
-    perPeriodEEFee,
-    perPeriodExistingDeductions,
-    perPeriodFITBefore,
-    perPeriodFITAfter,
-    perPeriodFITSavings,
-    perPeriodFICASavings,
-    perPeriodSSBefore: Math.max(0, annualSSBefore) / periods,
-    perPeriodSSAfter: Math.max(0, annualSSAfter) / periods,
-    perPeriodMedicareBefore: Math.max(0, annualMedicareBefore) / periods,
-    perPeriodMedicareAfter: Math.max(0, annualMedicareAfter) / periods,
+    perPeriodGross: annualGross / periods,
+    perPeriodPremium: premium,
+    perPeriodReimbursement: premium, // always 100% of premium
+    perPeriodEEFee: eeFee,
+    perPeriodExistingDeductions: existingPreTaxDeductions / periods,
+    perPeriodFITBefore: fitBefore,
+    perPeriodFITAfter: fits ? fitAfter : fitBefore,
+    perPeriodFITSavings: fitSavings,
+    perPeriodFICASavings: tax.total,
+    perPeriodNetBenefit: net,
+    perPeriodSSBefore: ssBefore,
+    perPeriodSSAfter: cents(ssBefore - tax.socialSecurity),
+    perPeriodMedicareBefore: medicareBefore,
+    perPeriodMedicareAfter: cents(medicareBefore - tax.medicare),
 
     // Premium
     monthlyPremium: SIMRP_PREMIUM_MONTHLY,

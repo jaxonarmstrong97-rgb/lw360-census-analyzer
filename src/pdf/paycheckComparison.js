@@ -146,12 +146,6 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
   doc.setFontSize(9);
   doc.text(`Annual Benefit: ${formatCurrency(emp.annualBenefit)}`, 107.95, y + 18, { align: 'center' });
 
-  if (emp.bufferApplied) {
-    doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
-    doc.text('* Includes $5/mo buffer for hourly pay protection', 107.95, y + 24, { align: 'center' });
-  }
-
   y += 35;
 
   doc.setFontSize(11);

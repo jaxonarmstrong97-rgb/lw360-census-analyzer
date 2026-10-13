@@ -202,15 +202,15 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
   const avgGrossSavings = qualified.length > 0
     ? qualified.reduce((s, r) => s + r.monthlyFITSavings + r.monthlyFICASavings, 0) / qualified.length
     : 0;
-  const totalMonthlyGross = qualified.reduce((s, r) => s + r.monthlyFITSavings + r.monthlyFICASavings, 0);
   const avgMonthlyFee = qualified.length > 0
     ? qualified.reduce((s, r) => s + r.monthlyEEFee, 0) / qualified.length
     : 0;
-  const totalMonthlyFee = qualified.reduce((s, r) => s + r.monthlyEEFee, 0);
 
+  // LW360 rule (10/5/26): clients never see totals of fees paid to LW360, or the employees'
+  // aggregate gross savings. Per-employee figures and net totals are fine.
   const eeSavingsData = [
-    ['Gross Tax Savings', `${formatCurrency(avgGrossSavings)} / mo`, `${formatCurrency(totalMonthlyGross)} / mo`],
-    ['Less: Employee Fee', `(${formatCurrency(avgMonthlyFee)}) / mo`, `(${formatCurrency(totalMonthlyFee)}) / mo`],
+    ['Gross Tax Savings', `${formatCurrency(avgGrossSavings)} / mo`, ''],
+    ['Less: Employee Fee', `(${formatCurrency(avgMonthlyFee)}) / mo`, ''],
     ['Avg Net Employee Benefit', `${formatCurrency(aggregates.averageMonthlyBenefit)} / mo`, `${formatCurrency(aggregates.totalAnnualEEBenefit / 12)} / mo`],
     ['Annual Total', `${formatCurrency(aggregates.averageMonthlyBenefit * 12)} / year`, `${formatCurrency(aggregates.totalAnnualEEBenefit)} / year`],
   ];
@@ -239,10 +239,9 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
   doc.text('Employer Savings', MARGIN, y);
   y += 3;
 
+  // Net only: no gross payroll tax total and no total of employer fees (LW360 rule, 10/5/26).
   const erSavingsData = [
-    ['Employer FICA Savings', formatCurrency(aggregates.totalAnnualERSavings)],
-    [`Less: Employer Fees ($${ER_FEE_MONTHLY.Private}/EE/mo)`, `(${formatCurrency(aggregates.totalAnnualERFees)})`],
-    ['Net Employer Savings', formatCurrency(aggregates.totalNetAnnualERSavings)],
+    [`Net Employer Savings (after the $${ER_FEE_MONTHLY.Private}/employee/month fee)`, formatCurrency(aggregates.totalNetAnnualERSavings)],
   ];
 
   autoTable(doc, {
@@ -256,7 +255,7 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
       1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
-      if (data.row.index === 2) {
+      if (data.section === 'body' && data.row.index === 0) { // the net row
         data.cell.styles.fillColor = [230, 255, 230];
       } else if (data.row.index % 2 === 0) {
         data.cell.styles.fillColor = LIGHT_GRAY;
@@ -948,17 +947,9 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.text(splitDistrict, MARGIN, y);
   y += splitDistrict.length * 4 + 6;
 
-  // District Financial Impact table
-  const annualFicaSavingsER = SIMRP_PREMIUM_MONTHLY * ficaRateUsed * aggregates.totalQualified * 12;
-  const annualERFees = erFee * aggregates.totalQualified * 12;
-
-  const savingsLabel = isNonFICA
-    ? `Medicare Savings (1.45% \u00D7 $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`
-    : `FICA Savings (7.65% \u00D7 $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`;
-
+  // District Financial Impact table. Net only: no gross payroll tax total and no total of
+  // LW360 employer fees (LW360 rule, 10/5/26); the per-employee fee is in the text above.
   const districtData = [
-    [savingsLabel, formatCurrency(annualFicaSavingsER)],
-    [`Less: LW360 Employer Fees ($${erFee}/EE \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`, `(${formatCurrency(annualERFees)})`],
     ['Net Annual District Savings', formatCurrency(aggregates.totalNetAnnualERSavings)],
   ];
 
@@ -973,7 +964,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
       1: { cellWidth: 45, halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
-      if (data.row.index === 2) {
+      if (data.section === 'body' && data.row.index === 0) { // the net row
         data.cell.styles.fillColor = [230, 255, 230];
       } else if (data.row.index % 2 === 0) {
         data.cell.styles.fillColor = LIGHT_GRAY;
