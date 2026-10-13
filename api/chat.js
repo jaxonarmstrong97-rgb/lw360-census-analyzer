@@ -1,3 +1,5 @@
+import { guard, text, num } from './_guard.js';
+
 const SYSTEM_PROMPT = `You are the LW360 Census Analyzer Assistant — an expert on the Section 125 Individual Medical Reimbursement Plan (SIMRP) program that Live Well 360 offers. You help internal team members use this tool, even if they have zero prior experience with the program.
 
 ## Your Role
@@ -102,17 +104,33 @@ The paycheck comparison shows employees their pay BEFORE and AFTER LW360:
 - Proactively warn about common pitfalls (wrong header row, per-period vs annual wages, etc.)
 - When explaining a concept, relate it back to what they see on screen`;
 
-export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
+// Size caps for one chat request (see _guard.js for why).
+const MAX_MESSAGES = 20;            // the most recent turns are kept
+const MAX_MESSAGE_CHARS = 4000;
+const MAX_HISTORY_CHARS = 40_000;   // all kept turns together, about 10,000 tokens
+const MAX_CONTEXT_CHARS = 4000;     // per free-text context field
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+// Keep only well-formed user and assistant turns, most recent last, and make sure the
+// conversation ends on a user turn (the API requires it).
+function cleanMessages(list) {
+  if (!Array.isArray(list)) return [];
+  const turns = list
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim() !== '')
+    .slice(-MAX_MESSAGES)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_CHARS) }));
+  let total = turns.reduce((sum, m) => sum + m.content.length, 0);
+  while (turns.length > 1 && total > MAX_HISTORY_CHARS) total -= turns.shift().content.length; // drop the oldest
+  while (turns.length && turns[0].role !== 'user') turns.shift();
+  return turns.length && turns[turns.length - 1].role === 'user' ? turns : [];
+}
+
+const fixed = (value, digits) => {
+  const n = num(value);
+  return n === null ? 'n/a' : n.toFixed(digits);
+};
+
+export default async function handler(req, res) {
+  if (!guard(req, res, { limitPerMinute: 30 })) return;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -124,39 +142,45 @@ export default async function handler(req, res) {
   const model = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 
   try {
-    const { messages, context } = req.body;
+    const messages = cleanMessages(req.body?.messages);
+    if (messages.length === 0) {
+      return res.status(400).json({ error: 'Send at least one user message.' });
+    }
+    const context = req.body?.context && typeof req.body.context === 'object' ? req.body.context : null;
+    const short = (v) => text(v, 200).replace(/[\r\n]+/g, ' ');
+    const long = (v) => text(v, MAX_CONTEXT_CHARS);
 
     // Build context-aware system prompt
     let systemPrompt = SYSTEM_PROMPT;
     if (context) {
       systemPrompt += '\n\n## Current Context\n';
-      if (context.step) systemPrompt += `User is on Step ${context.step} (flow: Upload → Confirm → Generate).\n`;
-      if (context.companyName) systemPrompt += `Company: ${context.companyName}\n`;
+      if (context.step) systemPrompt += `User is on Step ${short(context.step)} (flow: Upload → Confirm → Generate).\n`;
+      if (context.companyName) systemPrompt += `Company: ${short(context.companyName)}\n`;
       if (context.companyType) {
         const typeLabels = { 'Non-FICA': 'Non-FICA School/Business', 'FICA-School': 'FICA School District', Private: 'Private Sector' };
-        systemPrompt += `Company Type: ${typeLabels[context.companyType] || context.companyType}\n`;
+        systemPrompt += `Company Type: ${typeLabels[context.companyType] || short(context.companyType)}\n`;
       }
-      if (context.payFrequency) systemPrompt += `Pay Frequency: ${context.payFrequency}\n`;
-      if (context.employeeCount) systemPrompt += `Employees loaded: ${context.employeeCount}\n`;
-      if (context.fileName) systemPrompt += `File uploaded: ${context.fileName}\n`;
-      if (context.sampleData) systemPrompt += `Sample data (first 3 rows):\n${context.sampleData}\n`;
-      if (context.aiConfidence) systemPrompt += `AI analysis confidence: ${context.aiConfidence}\n`;
-      if (context.aiNotes) systemPrompt += `AI analysis notes: ${context.aiNotes}\n`;
-      if (context.aiMappings) systemPrompt += `AI-detected column mappings: ${context.aiMappings}\n`;
-      if (context.mappings) systemPrompt += `Column mappings: ${JSON.stringify(context.mappings)}\n`;
-      if (context.results) {
+      if (context.payFrequency) systemPrompt += `Pay Frequency: ${short(context.payFrequency)}\n`;
+      if (context.employeeCount) systemPrompt += `Employees loaded: ${short(context.employeeCount)}\n`;
+      if (context.fileName) systemPrompt += `File uploaded: ${short(context.fileName)}\n`;
+      if (context.sampleData) systemPrompt += `Sample data (first 3 rows):\n${long(context.sampleData)}\n`;
+      if (context.aiConfidence) systemPrompt += `AI analysis confidence: ${short(context.aiConfidence)}\n`;
+      if (context.aiNotes) systemPrompt += `AI analysis notes: ${long(context.aiNotes)}\n`;
+      if (context.aiMappings) systemPrompt += `AI-detected column mappings: ${long(context.aiMappings)}\n`;
+      if (context.mappings) systemPrompt += `Column mappings: ${text(JSON.stringify(context.mappings), MAX_CONTEXT_CHARS)}\n`;
+      if (context.results && typeof context.results === 'object') {
         const r = context.results;
         systemPrompt += `\nCalculation Results:\n`;
-        systemPrompt += `- Total employees: ${r.totalEmployees}\n`;
-        systemPrompt += `- Qualified: ${r.totalQualified}\n`;
-        systemPrompt += `- Ineligible: ${r.totalIneligible}\n`;
-        systemPrompt += `- Qualification rate: ${r.qualificationRate?.toFixed(1)}%\n`;
-        systemPrompt += `- Total annual EE benefit: $${r.totalAnnualEEBenefit?.toFixed(2)}\n`;
-        systemPrompt += `- Net annual ER savings: $${r.totalNetAnnualERSavings?.toFixed(2)}\n`;
-        systemPrompt += `- Avg monthly benefit: $${r.averageMonthlyBenefit?.toFixed(2)}\n`;
+        systemPrompt += `- Total employees: ${fixed(r.totalEmployees, 0)}\n`;
+        systemPrompt += `- Qualified: ${fixed(r.totalQualified, 0)}\n`;
+        systemPrompt += `- Ineligible: ${fixed(r.totalIneligible, 0)}\n`;
+        systemPrompt += `- Qualification rate: ${fixed(r.qualificationRate, 1)}%\n`;
+        systemPrompt += `- Total annual EE benefit: $${fixed(r.totalAnnualEEBenefit, 2)}\n`;
+        systemPrompt += `- Net annual ER savings: $${fixed(r.totalNetAnnualERSavings, 2)}\n`;
+        systemPrompt += `- Avg monthly benefit: $${fixed(r.averageMonthlyBenefit, 2)}\n`;
       }
       if (context.employeeDetails) {
-        systemPrompt += `\nEmployee details (subset):\n${context.employeeDetails}\n`;
+        systemPrompt += `\nEmployee details (subset):\n${long(context.employeeDetails)}\n`;
       }
     }
 
@@ -171,10 +195,7 @@ export default async function handler(req, res) {
         model,
         max_tokens: 1024,
         system: systemPrompt,
-        messages: messages.map(m => ({
-          role: m.role,
-          content: m.content,
-        })),
+        messages,
       }),
     });
 
@@ -185,8 +206,13 @@ export default async function handler(req, res) {
     }
 
     const data = await response.json();
+    // Read the text blocks by type: newer models can put thinking blocks first.
+    const reply = (Array.isArray(data.content) ? data.content : [])
+      .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('');
     return res.status(200).json({
-      response: data.content[0].text,
+      response: reply || "I couldn't put an answer together. Please try asking again.",
     });
   } catch (err) {
     console.error('Chat handler error:', err);

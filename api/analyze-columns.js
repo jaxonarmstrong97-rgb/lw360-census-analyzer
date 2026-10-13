@@ -1,3 +1,5 @@
+import { guard, text } from './_guard.js';
+
 const SYSTEM_PROMPT = `You are an expert payroll data analyst for LW360 Health Strategy Advisors.
 You analyze census and payroll files to identify employee data structure for a Section 125 SIMRP tax savings analysis.
 
@@ -51,17 +53,41 @@ PAYROLL SYSTEM PATTERNS:
 
 Respond ONLY in valid JSON (no markdown, no backticks, no explanation text outside the JSON).`;
 
-export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
+// Size caps. The upload step sends up to 25 rows and the column mapper sends a header
+// row plus 5 sample rows, so these leave room without letting one request carry an
+// oversized prompt.
+const MAX_ROWS = 30;
+const MAX_CELLS = 120;
+const MAX_CELL_CHARS = 200;
+const MAX_TOTAL_CHARS = 60_000; // all rows together, about 15,000 tokens
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+const cleanRow = (row) => (Array.isArray(row) ? row : [row]).slice(0, MAX_CELLS).map((cell) => text(cell, MAX_CELL_CHARS));
+
+// Keep whole rows, in order, until the total size cap is reached.
+function capTotal(rows) {
+  const kept = [];
+  let total = 0;
+  for (const row of rows) {
+    total += JSON.stringify(row).length;
+    if (total > MAX_TOTAL_CHARS) break;
+    kept.push(row);
   }
+  return kept;
+}
+
+// Two request shapes: the upload step sends { rawRows, fileName }; the column mapper's
+// "AI detect" sends { headers, sampleRows }, which is read as a header row followed by
+// sample rows (so header_row comes back as 0). Returns null when neither shape fits.
+function readRows(body) {
+  if (Array.isArray(body?.rawRows)) return capTotal(body.rawRows.slice(0, MAX_ROWS).map(cleanRow));
+  if (Array.isArray(body?.headers) && Array.isArray(body?.sampleRows)) {
+    return capTotal([body.headers, ...body.sampleRows].slice(0, MAX_ROWS).map(cleanRow));
+  }
+  return null;
+}
+
+export default async function handler(req, res) {
+  if (!guard(req, res, { limitPerMinute: 20 })) return;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -73,7 +99,11 @@ export default async function handler(req, res) {
   const model = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 
   try {
-    const { rawRows, fileName } = req.body;
+    const rawRows = readRows(req.body);
+    if (!rawRows || rawRows.length === 0) {
+      return res.status(400).json({ error: 'Send rawRows, or headers and sampleRows.' });
+    }
+    const fileName = text(req.body?.fileName, 200).replace(/["\r\n]/g, ' ').trim();
 
     const userPrompt = `Analyze this census file "${fileName || 'census.csv'}". Here are the raw rows:
 
@@ -128,10 +158,14 @@ Return JSON with this exact structure:
     }
 
     const data = await response.json();
-    const text = data.content[0].text;
+    // Read the text blocks by type: newer models can put thinking blocks first.
+    const reply = (Array.isArray(data.content) ? data.content : [])
+      .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text)
+      .join('');
 
     // Extract JSON from response (handle possible markdown wrapping)
-    const cleaned = text.replace(/```json|```/g, '').trim();
+    const cleaned = reply.replace(/```json|```/g, '').trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return res.status(500).json({ error: 'Failed to parse AI response' });
