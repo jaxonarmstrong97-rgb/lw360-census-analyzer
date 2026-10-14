@@ -40,7 +40,7 @@ function addHeader(doc, showConfidential = true) {
   doc.text('LIVE WELL 360', MARGIN, 10);
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
-  doc.text('Health Strategy Advisors', MARGIN, 16);
+  doc.text('Wellness Program', MARGIN, 16);
 
   if (showConfidential) {
     doc.setFillColor(...RED);
@@ -59,7 +59,7 @@ function addFooter(doc, pageNum, totalPages) {
   doc.setFontSize(6.5);
   doc.setTextColor(...TEXT_LIGHT);
   doc.text(
-    'Live Well 360 Health Strategy Advisors | livewellhealth360.com | (806) 799-1099',
+    'Live Well 360 | livewellhealth360.com | (806) 799-1099',
     PAGE_W / 2, y + 4, { align: 'center' }
   );
   if (totalPages) {
@@ -71,12 +71,12 @@ function addContactBlock(doc, y) {
   doc.setFontSize(10);
   doc.setTextColor(...NAVY);
   doc.setFont('helvetica', 'bold');
-  doc.text('Live Well 360 Health Strategy Advisors', MARGIN, y);
+  doc.text('Live Well 360', MARGIN, y);
   y += 6;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_MED);
-  doc.text('Jaxon Armstrong | Business Development', MARGIN, y);
+  doc.text('Jaxon Armstrong | Chief Technology Officer', MARGIN, y);
   y += 5;
   doc.text('(806) 559-5224 | jaxon@livewellhsa.com', MARGIN, y);
   y += 5;
@@ -130,7 +130,7 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
   doc.setFontSize(16);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_MED);
-  doc.text('SIMRP Eligibility Analysis', PAGE_W / 2, 100, { align: 'center' });
+  doc.text('Benefit Analysis', PAGE_W / 2, 100, { align: 'center' });
 
   doc.setFontSize(11);
   doc.text('Prepared by', PAGE_W / 2, 125, { align: 'center' });
@@ -171,7 +171,7 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
 
   drawStatBox(doc, startX, y, boxW, boxH,
     String(aggregates.totalQualified),
-    'Qualified Employees',
+    'Full Benefit Employees',
     [230, 255, 230], GREEN
   );
   drawStatBox(doc, startX + boxW + gap, y, boxW, boxH,
@@ -202,22 +202,22 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
   const avgGrossSavings = qualified.length > 0
     ? qualified.reduce((s, r) => s + r.monthlyFITSavings + r.monthlyFICASavings, 0) / qualified.length
     : 0;
-  const totalMonthlyGross = qualified.reduce((s, r) => s + r.monthlyFITSavings + r.monthlyFICASavings, 0);
   const avgMonthlyFee = qualified.length > 0
     ? qualified.reduce((s, r) => s + r.monthlyEEFee, 0) / qualified.length
     : 0;
-  const totalMonthlyFee = qualified.reduce((s, r) => s + r.monthlyEEFee, 0);
 
+  // LW360 rule (10/5/26): clients never see totals of fees paid to LW360, or the employees'
+  // aggregate gross savings. Per-employee figures and net totals are fine.
   const eeSavingsData = [
-    ['Gross Tax Savings', `${formatCurrency(avgGrossSavings)} / mo`, `${formatCurrency(totalMonthlyGross)} / mo`],
-    ['Less: Employee Fee', `(${formatCurrency(avgMonthlyFee)}) / mo`, `(${formatCurrency(totalMonthlyFee)}) / mo`],
+    ['Gross Tax Savings', `${formatCurrency(avgGrossSavings)} / mo`, ''],
+    ['Less: Employee Fee', `(${formatCurrency(avgMonthlyFee)}) / mo`, ''],
     ['Avg Net Employee Benefit', `${formatCurrency(aggregates.averageMonthlyBenefit)} / mo`, `${formatCurrency(aggregates.totalAnnualEEBenefit / 12)} / mo`],
     ['Annual Total', `${formatCurrency(aggregates.averageMonthlyBenefit * 12)} / year`, `${formatCurrency(aggregates.totalAnnualEEBenefit)} / year`],
   ];
 
   autoTable(doc, {
     startY: y,
-    head: [['Metric', 'Avg Per Employee', 'All Eligible']],
+    head: [['Metric', 'Avg Per Employee', 'All Full Benefit']],
     body: eeSavingsData,
     headStyles: { fillColor: NAVY, textColor: WHITE, fontSize: 8, fontStyle: 'bold', cellPadding: 3 },
     styles: { fontSize: 8.5, cellPadding: 3 },
@@ -239,10 +239,9 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
   doc.text('Employer Savings', MARGIN, y);
   y += 3;
 
+  // Net only: no gross payroll tax total and no total of employer fees (LW360 rule, 10/5/26).
   const erSavingsData = [
-    ['Employer FICA Savings', formatCurrency(aggregates.totalAnnualERSavings)],
-    [`Less: Employer Fees ($${ER_FEE_MONTHLY.Private}/EE/mo)`, `(${formatCurrency(aggregates.totalAnnualERFees)})`],
-    ['Net Employer Savings', formatCurrency(aggregates.totalNetAnnualERSavings)],
+    [`Net Employer Savings (after the $${ER_FEE_MONTHLY.Private}/employee/month fee)`, formatCurrency(aggregates.totalNetAnnualERSavings)],
   ];
 
   autoTable(doc, {
@@ -256,7 +255,7 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
       1: { cellWidth: 50, halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
-      if (data.row.index === 2) {
+      if (data.section === 'body' && data.row.index === 0) { // the net row
         data.cell.styles.fillColor = [230, 255, 230];
       } else if (data.row.index % 2 === 0) {
         data.cell.styles.fillColor = LIGHT_GRAY;
@@ -302,17 +301,17 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
         formatCurrency(r.monthlyBenefit),
         formatCurrency(r.annualBenefit),
         formatCurrency(r.netAnnualERSavings),
-        'Qualified',
+        'Full Benefit',
       ];
     } else {
       return [
         r.name,
         formatCurrency(r.perPeriodGross),
         r.perPeriodFITBefore > 0 ? formatCurrency(r.perPeriodFITBefore) : '$0.00',
-        '\u2014',
-        '\u2014',
-        '\u2014',
-        'Ineligible',
+        'n/a',
+        'n/a',
+        'n/a',
+        'Wellness Only',
       ];
     }
   });
@@ -320,7 +319,7 @@ function generatePrivateReport(doc, calcResults, companyName, payFrequency, repo
   // Add TOTAL row
   const totalMonthlyBenefit = qualified.reduce((s, r) => s + r.monthlyBenefit, 0);
   employeeTableData.push([
-    `TOTAL (${aggregates.totalQualified} Qualified)`,
+    `TOTAL (${aggregates.totalQualified} Full Benefit)`,
     '',
     '',
     formatCurrency(totalMonthlyBenefit),
@@ -448,13 +447,13 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   y += 10;
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...NAVY);
-  doc.text('Eligibility Analysis Report', PAGE_W / 2, y, { align: 'center' });
+  doc.text('Benefit Analysis', PAGE_W / 2, y, { align: 'center' });
   y += 18;
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_MED);
-  doc.text('Prepared by Live Well 360 Health Strategy Advisors', PAGE_W / 2, y, { align: 'center' });
+  doc.text('Prepared by Live Well 360', PAGE_W / 2, y, { align: 'center' });
   y += 6;
   doc.text('6609 Toledo Avenue, Suite 1 | Lubbock, TX', PAGE_W / 2, y, { align: 'center' });
   y += 10;
@@ -485,7 +484,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const summaryText = `Live Well 360 Health Strategy Advisors (LW360) has completed a comprehensive eligibility analysis for ${companyName} based on ${formatDate(reportDate)} payroll data. This report presents aggregate findings using marginal tax rate methodology consistent with IRS Publication 15-T. All dollar figures are estimates; actual results vary by employee.`;
+  const summaryText = `Live Well 360 (LW360) has completed a Benefit Analysis for ${companyName} based on ${formatDate(reportDate)} payroll data. This report presents aggregate findings using marginal tax rate methodology consistent with IRS Publication 15-T. All dollar figures are estimates; actual results vary by employee.`;
   const splitSummary = doc.splitTextToSize(summaryText, PAGE_W - 2 * MARGIN);
   doc.text(splitSummary, MARGIN, y);
   y += splitSummary.length * 4.5 + 6;
@@ -498,7 +497,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   const sStartX = (PAGE_W - sTotalW) / 2;
 
   const statItems = [
-    { value: `${aggregates.totalQualified}`, sub: `Eligible Employees (${formatPercent(aggregates.qualificationRate)})`, fill: [230, 255, 230], color: GREEN },
+    { value: `${aggregates.totalQualified}`, sub: `Full Benefit Employees (${formatPercent(aggregates.qualificationRate)})`, fill: [230, 255, 230], color: GREEN },
     { value: formatCurrency(aggregates.totalAnnualEEBenefit), sub: 'Est. Annual Employee Savings', fill: LIGHT_GRAY, color: NAVY },
     { value: formatCurrency(aggregates.totalNetAnnualERSavings), sub: 'Est. Annual District Savings (Net)', fill: LIGHT_GRAY, color: NAVY },
     { value: `${formatCurrency(aggregates.averageMonthlyBenefit)}`, sub: 'Est. Avg Monthly Benefit per Employee', fill: [230, 255, 230], color: GREEN },
@@ -538,7 +537,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const overviewText = 'The LW360 Self-Insured Medical Reimbursement Plan (SIMRP) is a qualified employer-sponsored benefit plan established under IRC Sections 105 and 125. The plan creates a pre-tax premium structure that reduces federal income tax withholding and Medicare tax obligations for participating employees, resulting in increased take-home pay.';
+  const overviewText = 'The LW360 Self-Insured Medical Reimbursement Plan (SIMRP) is an employer-sponsored benefit plan established under IRC Sections 105 and 125. The plan creates a pre-tax premium structure that reduces federal income tax and Medicare withholding for participating employees. Gross wages are unchanged.';
   const splitOverview = doc.splitTextToSize(overviewText, PAGE_W - 2 * MARGIN);
   doc.text(splitOverview, MARGIN, y);
   y += splitOverview.length * 4 + 6;
@@ -619,17 +618,17 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(14);
   doc.setTextColor(...NAVY);
   doc.setFont('helvetica', 'bold');
-  doc.text('Eligibility Results', MARGIN, y);
+  doc.text('Participation Results', MARGIN, y);
   y += 8;
 
   doc.setFontSize(11);
-  doc.text('Overall Eligibility', MARGIN, y);
+  doc.text('Overall Participation', MARGIN, y);
   y += 3;
 
   const eligData = [
     ['Total Active Employees', String(aggregates.totalEmployees), '100.0%'],
-    ['Eligible', String(aggregates.totalQualified), formatPercent(aggregates.qualificationRate)],
-    [`Ineligible \u2014 Insufficient FIT`, String(aggregates.totalIneligible), formatPercent(100 - aggregates.qualificationRate)],
+    ['Full Benefit', String(aggregates.totalQualified), formatPercent(aggregates.qualificationRate)],
+    ['Wellness Only', String(aggregates.totalIneligible), formatPercent(100 - aggregates.qualificationRate)],
   ];
 
   autoTable(doc, {
@@ -665,7 +664,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  doc.text(`Among the ${aggregates.totalQualified} eligible employees, the distribution across federal tax brackets is as follows:`, MARGIN, y);
+  doc.text(`Among the ${aggregates.totalQualified} Full Benefit employees, the distribution across federal tax brackets is as follows:`, MARGIN, y);
   y += 5;
 
   const bracketData = brackets.map(b => [
@@ -678,7 +677,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
 
   autoTable(doc, {
     startY: y,
-    head: [['Bracket', 'Employees', '% of Eligible', 'Gross Savings/Mo', 'Net Benefit/Mo']],
+    head: [['Bracket', 'Employees', '% of Full Benefit', 'Gross Savings/Mo', 'Net Benefit/Mo']],
     body: bracketData,
     headStyles: { fillColor: NAVY, textColor: WHITE, fontSize: 7.5, fontStyle: 'bold', cellPadding: 3 },
     styles: { fontSize: 8, cellPadding: 3 },
@@ -701,7 +700,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...TEXT_DARK);
-    const bracketNarrative = `The majority of eligible employees (${majorBracket.pct}%) fall in the ${majorBracket.bracket} bracket, generating a net monthly benefit of ${formatCurrency(majorBracket.avgNet)} after fees. The average net benefit across all eligible employees is ${formatCurrency(aggregates.averageMonthlyBenefit)} per month, or ${formatCurrency(aggregates.averageMonthlyBenefit * 12)} annually.`;
+    const bracketNarrative = `The majority of Full Benefit employees (${majorBracket.pct}%) fall in the ${majorBracket.bracket} bracket, generating a net monthly benefit of ${formatCurrency(majorBracket.avgNet)} after fees. The average net benefit across all Full Benefit employees is ${formatCurrency(aggregates.averageMonthlyBenefit)} per month, or ${formatCurrency(aggregates.averageMonthlyBenefit * 12)} annually.`;
     const splitBN = doc.splitTextToSize(bracketNarrative, PAGE_W - 2 * MARGIN);
     doc.text(splitBN, MARGIN, y);
     y += splitBN.length * 4 + 6;
@@ -712,13 +711,13 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
     doc.setFontSize(11);
     doc.setTextColor(...NAVY);
     doc.setFont('helvetica', 'bold');
-    doc.text('Ineligible Population', MARGIN, y);
+    doc.text('Wellness Only Employees', MARGIN, y);
     y += 6;
 
     doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...TEXT_DARK);
-    let ineligText = `Of the ${aggregates.totalIneligible} ineligible employee${aggregates.totalIneligible > 1 ? 's' : ''}`;
+    let ineligText = `Of the ${aggregates.totalIneligible} Wellness Only employee${aggregates.totalIneligible > 1 ? 's' : ''}`;
     if (zeroFIT.length > 0) {
       ineligText += `, ${zeroFIT.length} show $0 federal income tax withholding`;
     }
@@ -744,19 +743,21 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(14);
   doc.setTextColor(...NAVY);
   doc.setFont('helvetica', 'bold');
-  doc.text('Eligible Employee Detail', MARGIN, y);
+  doc.text('Full Benefit Employee Detail', MARGIN, y);
   y += 6;
 
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const detailIntro = `The following ${aggregates.totalQualified} employees qualify for the LW360 SIMRP based on their annual salary, W-4 filing status, and resulting federal income tax savings.`;
+  const detailIntro = `The following ${aggregates.totalQualified} employees receive the Full Benefit, based on their annual salary, W-4 filing status, and resulting federal income tax savings.`;
   const splitDetail = doc.splitTextToSize(detailIntro, PAGE_W - 2 * MARGIN);
   doc.text(splitDetail, MARGIN, y);
   y += splitDetail.length * 4 + 3;
 
   const qualSorted = [...qualified].sort((a, b) => b.monthlyBenefit - a.monthlyBenefit);
-  const medicareSavings = SIMRP_PREMIUM_MONTHLY * MEDICARE_RATE;
+  // Payroll tax savings come from each employee's own result: Medicare only for TRS districts,
+  // Social Security and Medicare for districts that pay Social Security. (A flat Medicare figure
+  // left FICA districts' rows short of their net benefit.)
 
   const eligibleTableData = qualSorted.map(r => [
     r.name,
@@ -764,15 +765,15 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
     r.filingStatus,
     fmtRate(r.marginalRate),
     formatCurrency(r.monthlyFITSavings),
-    formatCurrency(medicareSavings),
-    formatCurrency(r.monthlyFITSavings + medicareSavings),
+    formatCurrency(r.monthlyFICASavings),
+    formatCurrency(r.monthlyFITSavings + r.monthlyFICASavings),
     formatCurrency(r.monthlyBenefit),
   ]);
 
-  // TOTAL row
+  // TOTAL row: net only. A gross total next to the net total would let a reader work out the
+  // total of fees paid to LW360 (LW360 rule, 10/5/26; house style section 5). totalFIT still
+  // feeds the per-employee averages in the financial summary below.
   const totalFIT = qualified.reduce((s, r) => s + r.monthlyFITSavings, 0);
-  const totalMedicare = medicareSavings * qualified.length;
-  const totalGrossBenefit = totalFIT + totalMedicare;
   const totalNetBenefit = qualified.reduce((s, r) => s + r.monthlyBenefit, 0);
 
   eligibleTableData.push([
@@ -780,15 +781,15 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
     '',
     '',
     '',
-    formatCurrency(totalFIT),
-    formatCurrency(totalMedicare),
-    formatCurrency(totalGrossBenefit),
+    '',
+    '',
+    '',
     formatCurrency(totalNetBenefit),
   ]);
 
   autoTable(doc, {
     startY: y,
-    head: [['Employee Name', 'Annual Salary', 'Filing Status', 'Marginal Bracket', 'FIT Savings/Month', 'Medicare Savings/Mo', 'Gross Benefit/Mo', 'Net Benefit/Month']],
+    head: [['Employee Name', 'Annual Salary', 'Filing Status', 'Marginal Bracket', 'FIT Savings/Month', isNonFICA ? 'Medicare Savings/Mo' : 'FICA Savings/Mo', 'Gross Benefit/Mo', 'Net Benefit/Month']],
     body: eligibleTableData,
     headStyles: { fillColor: NAVY, textColor: WHITE, fontSize: 6.5, fontStyle: 'bold', cellPadding: 2, halign: 'center' },
     styles: { fontSize: 6.5, cellPadding: 2 },
@@ -832,7 +833,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
     doc.setFontSize(14);
     doc.setTextColor(...RED);
     doc.setFont('helvetica', 'bold');
-    doc.text('Ineligible Employee Detail', MARGIN, y);
+    doc.text('Wellness Only Employee Detail', MARGIN, y);
     y += 5;
 
     const ineligibleSorted = [...ineligible].sort((a, b) => a.name.localeCompare(b.name));
@@ -886,16 +887,16 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   y += 3;
 
   const avgFIT = qualified.length > 0 ? totalFIT / qualified.length : 0;
-  const avgMedicare = medicareSavings;
-  const avgGross = avgFIT + avgMedicare;
+  const avgPayrollTax = qualified.length > 0 ? qualified.reduce((s, r) => s + r.monthlyFICASavings, 0) / qualified.length : 0;
+  const avgGross = avgFIT + avgPayrollTax;
 
   const financialData = [
     ['Average FIT Savings per Employee', `${formatCurrency(avgFIT)}/month`],
-    ['Average Medicare Savings per Employee', `${formatCurrency(avgMedicare)}/month`],
+    [isNonFICA ? 'Average Medicare Savings per Employee' : 'Average FICA Savings per Employee', `${formatCurrency(avgPayrollTax)}/month`],
     ['Average Gross Savings per Employee', `${formatCurrency(avgGross)}/month`],
     ['Less: Employee Fee', `(${formatCurrency(eeFee)})/month`],
     ['Average Net Benefit per Employee', `${formatCurrency(aggregates.averageMonthlyBenefit)}/month`],
-    ['Total Monthly Employee Savings (All Eligible)', `${formatCurrency(totalNetBenefit)}/month`],
+    ['Total Monthly Employee Savings (Full Benefit)', `${formatCurrency(totalNetBenefit)}/month`],
     ['Total Annual Employee Savings', `${formatCurrency(aggregates.totalAnnualEEBenefit)}/year`],
   ];
 
@@ -948,17 +949,9 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.text(splitDistrict, MARGIN, y);
   y += splitDistrict.length * 4 + 6;
 
-  // District Financial Impact table
-  const annualFicaSavingsER = SIMRP_PREMIUM_MONTHLY * ficaRateUsed * aggregates.totalQualified * 12;
-  const annualERFees = erFee * aggregates.totalQualified * 12;
-
-  const savingsLabel = isNonFICA
-    ? `Medicare Savings (1.45% \u00D7 $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`
-    : `FICA Savings (7.65% \u00D7 $${SIMRP_PREMIUM_MONTHLY.toLocaleString()} \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`;
-
+  // District Financial Impact table. Net only: no gross payroll tax total and no total of
+  // LW360 employer fees (LW360 rule, 10/5/26); the per-employee fee is in the text above.
   const districtData = [
-    [savingsLabel, formatCurrency(annualFicaSavingsER)],
-    [`Less: LW360 Employer Fees ($${erFee}/EE \u00D7 ${aggregates.totalQualified} EEs \u00D7 12 mo)`, `(${formatCurrency(annualERFees)})`],
     ['Net Annual District Savings', formatCurrency(aggregates.totalNetAnnualERSavings)],
   ];
 
@@ -973,7 +966,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
       1: { cellWidth: 45, halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
-      if (data.row.index === 2) {
+      if (data.section === 'body' && data.row.index === 0) { // the net row
         data.cell.styles.fillColor = [230, 255, 230];
       } else if (data.row.index % 2 === 0) {
         data.cell.styles.fillColor = LIGHT_GRAY;
@@ -1040,7 +1033,7 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...TEXT_DARK);
-  const scholarNarrative = `The scholarship fund provides ${companyName} with a meaningful community benefit that supports students and families, funded entirely by LW360 as part of the program partnership.`;
+  const scholarNarrative = `The scholarship fund provides ${companyName} with a meaningful community benefit that supports students and families, provided by LW360 as part of the program partnership.`;
   const splitSN = doc.splitTextToSize(scholarNarrative, PAGE_W - 2 * MARGIN);
   doc.text(splitSN, MARGIN, y);
   y += splitSN.length * 4 + 12;

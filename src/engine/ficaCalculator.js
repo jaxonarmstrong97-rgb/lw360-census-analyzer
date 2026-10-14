@@ -1,81 +1,33 @@
 import {
-  SIMRP_PREMIUM_ANNUAL, SIMRP_PREMIUM_MONTHLY,
-  FICA_RATE, MEDICARE_RATE, SS_WAGE_BASE,
-  ER_FEE_MONTHLY,
+  SIMRP_PREMIUM_MONTHLY, SIMRP_PREMIUM_ANNUAL,
+  FICA_RATE, SS_RATE, MEDICARE_RATE, SS_WAGE_BASE,
 } from './constants.js';
+import { cents } from './withholding15T.js';
 
-/**
- * Calculate employee FICA savings.
- */
-export function calculateEEFicaSavings(annualGross, companyType) {
-  if (companyType === 'Non-FICA') {
-    // Non-FICA: Medicare only (1.45%)
-    return {
-      annualFicaSavings: SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE,
-      monthlyFicaSavings: (SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE) / 12,
-      rateUsed: MEDICARE_RATE,
-    };
-  }
+// Payroll tax (FICA) savings on the premium, for one pay period. Employee and employer save
+// the same amount: Social Security 6.2% and Medicare 1.45% each.
+//
+// Social Security uses the exact wage-base method (2026-10-13, replacing the blended method):
+// Social Security is owed on wages up to the wage base, so the saving is 6.2% of
+// (the lesser of wages and the base, minus the lesser of wages less the premium and the base).
+// Anyone still above the base after the premium pays the same Social Security for the year
+// either way and saves Medicare only. The blended method (months to the cap at 7.65%, the rest
+// at 1.45%) overstated that. Below the base the result is the full 7.65%, as before.
 
-  // FICA-School and Private: full FICA or blended
-  if (annualGross > SS_WAGE_BASE) {
-    // Above SS wage base: Medicare only
-    return {
-      annualFicaSavings: SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE,
-      monthlyFicaSavings: (SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE) / 12,
-      rateUsed: MEDICARE_RATE,
-    };
-  }
-
-  // Below SS wage base: full FICA
-  return {
-    annualFicaSavings: SIMRP_PREMIUM_ANNUAL * FICA_RATE,
-    monthlyFicaSavings: (SIMRP_PREMIUM_ANNUAL * FICA_RATE) / 12,
-    rateUsed: FICA_RATE,
-  };
+export function annualSocialSecuritySavings(ficaWagesAnnual) {
+  const wages = Math.max(0, Number(ficaWagesAnnual) || 0);
+  return SS_RATE * (Math.min(wages, SS_WAGE_BASE) - Math.min(Math.max(wages - SIMRP_PREMIUM_ANNUAL, 0), SS_WAGE_BASE));
 }
 
-/**
- * Calculate employer FICA savings.
- */
-export function calculateERFicaSavings(annualGross, companyType) {
-  const erFee = ER_FEE_MONTHLY[companyType] || ER_FEE_MONTHLY.Private;
-
-  if (companyType === 'Non-FICA') {
-    // Non-FICA: Medicare only
-    const annualSavings = SIMRP_PREMIUM_ANNUAL * MEDICARE_RATE;
-    const monthlySavings = annualSavings / 12;
-    return {
-      annualERSavings: annualSavings,
-      monthlyERSavings: monthlySavings,
-      annualERFee: erFee * 12,
-      monthlyERFee: erFee,
-      netAnnualERSavings: annualSavings - (erFee * 12),
-      netMonthlyERSavings: monthlySavings - erFee,
-    };
-  }
-
-  // FICA-School and Private: full FICA or blended
-  let annualSavings;
-
-  if (annualGross <= SS_WAGE_BASE) {
-    annualSavings = SIMRP_PREMIUM_ANNUAL * FICA_RATE;
-  } else {
-    // Blended method for high earners
-    const monthsToCap = (SS_WAGE_BASE / annualGross) * 12;
-    const monthsAboveCap = 12 - monthsToCap;
-    annualSavings =
-      (monthsToCap * SIMRP_PREMIUM_MONTHLY * FICA_RATE) +
-      (monthsAboveCap * SIMRP_PREMIUM_MONTHLY * MEDICARE_RATE);
-  }
-
-  const monthlySavings = annualSavings / 12;
-  return {
-    annualERSavings: annualSavings,
-    monthlyERSavings: monthlySavings,
-    annualERFee: erFee * 12,
-    monthlyERFee: erFee,
-    netAnnualERSavings: annualSavings - (erFee * 12),
-    netMonthlyERSavings: monthlySavings - erFee,
-  };
+// Returns { total, socialSecurity, medicare } per pay period, in cents. Non-FICA employers
+// (TRS districts) pay Medicare only.
+export function payrollTaxSavingsPerPeriod(ficaWagesAnnual, companyType, periods) {
+  const premium = cents((SIMRP_PREMIUM_MONTHLY * 12) / periods);
+  const medicare = cents(premium * MEDICARE_RATE);
+  if (companyType === 'Non-FICA') return { total: medicare, socialSecurity: 0, medicare };
+  // Same rounding as the Benefit Analysis below the base: 7.65% of the premium, rounded once.
+  const total = ficaWagesAnnual <= SS_WAGE_BASE
+    ? cents(premium * FICA_RATE)
+    : cents(annualSocialSecuritySavings(ficaWagesAnnual) / periods + premium * MEDICARE_RATE);
+  return { total, socialSecurity: cents(total - medicare), medicare };
 }

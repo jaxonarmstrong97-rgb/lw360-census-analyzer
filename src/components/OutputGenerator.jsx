@@ -304,7 +304,7 @@ function generateRawCSV(results) {
     'Existing Pre-Tax Deductions', 'Taxable Income Before', 'Taxable Income After',
     'Annual FIT Before', 'Annual FIT After', 'Annual FIT Savings', 'Monthly FIT Savings',
     'Annual FICA Savings', 'Monthly FICA Savings',
-    'Monthly EE Fee', 'Buffer Applied', 'Monthly Net Benefit', 'Annual Net Benefit',
+    'Monthly EE Fee', 'Monthly Net Benefit', 'Annual Net Benefit',
     'Annual ER Savings', 'Monthly ER Fee', 'Net Annual ER Savings',
     'Eligible', 'Reason',
   ];
@@ -314,7 +314,7 @@ function generateRawCSV(results) {
     r.existingPreTaxDeductions, r.taxableIncomeBefore, r.taxableIncomeAfter,
     r.annualFITBefore, r.annualFITAfter, r.annualFITSavings, r.monthlyFITSavings,
     r.annualFICASavings, r.monthlyFICASavings,
-    r.monthlyEEFee, r.bufferApplied ? 'Y' : 'N', r.monthlyBenefit, r.annualBenefit,
+    r.monthlyEEFee, r.monthlyBenefit, r.annualBenefit,
     r.annualERSavings, r.monthlyERFee, r.netAnnualERSavings,
     r.eligible ? 'Yes' : 'No', r.eligibilityReason,
   ]);

@@ -18,7 +18,7 @@ function addHeader(doc, companyName) {
   doc.text('LIVE WELL 360', 15, 10);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.text('Health Strategy Advisors', 15, 15);
+  doc.text('Wellness Program', 15, 15);
 
   doc.setFillColor(...RED);
   doc.roundedRect(160, 4, 38, 10, 2, 2, 'F');
@@ -38,7 +38,7 @@ function addFooter(doc) {
   doc.line(15, y, 200, y);
   doc.setFontSize(6);
   doc.setTextColor(120, 120, 120);
-  doc.text('Live Well 360 Health Strategy Advisors | livewellhealth360.com | (806) 799-1099', 107.95, y + 4, { align: 'center' });
+  doc.text('Live Well 360 | livewellhealth360.com | (806) 799-1099', 107.95, y + 4, { align: 'center' });
 }
 
 function generateEmployeePage(doc, emp, companyName, payFrequency) {
@@ -85,14 +85,14 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
   const netDiff = netAfter - netBefore;
 
   const tableData = [
-    ['Gross Pay', formatCurrency(grossPP), formatCurrency(grossPP), '\u2014'],
+    ['Gross Pay', formatCurrency(grossPP), formatCurrency(grossPP), ''],
     ['Federal Income Tax', `(${formatCurrency(fitBeforePP)})`, `(${formatCurrency(fitAfterPP)})`, fmtPos(fitBeforePP - fitAfterPP)],
     ['Social Security Tax', `(${formatCurrency(ssBeforePP)})`, `(${formatCurrency(ssAfterPP)})`, fmtPos(ssBeforePP - ssAfterPP)],
     ['Medicare Tax', `(${formatCurrency(medBeforePP)})`, `(${formatCurrency(medAfterPP)})`, fmtPos(medBeforePP - medAfterPP)],
-    ['Existing Pre-Tax Deductions', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '\u2014', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '\u2014', '\u2014'],
-    ['LW Premium (pre-tax)', '\u2014', `(${formatCurrency(premiumPerPeriod)})`, '\u2014'],
-    ['LW Reimbursement (post-tax)', '\u2014', formatCurrency(premiumPerPeriod), '\u2014'],
-    ['EE Fee (post-tax)', '\u2014', `(${formatCurrency(eeFeePP)})`, '\u2014'],
+    ['Existing Pre-Tax Deductions', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '', existingDedPP > 0 ? `(${formatCurrency(existingDedPP)})` : '', ''],
+    ['LW Premium (pre-tax)', '', `(${formatCurrency(premiumPerPeriod)})`, ''],
+    ['LW Reimbursement (post-tax)', '', formatCurrency(premiumPerPeriod), ''],
+    ['EE Fee (post-tax)', '', `(${formatCurrency(eeFeePP)})`, ''],
     ['Net Take-Home Pay', formatCurrency(netBefore), formatCurrency(netAfter), fmtPos(netDiff)],
   ];
 
@@ -146,12 +146,6 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
   doc.setFontSize(9);
   doc.text(`Annual Benefit: ${formatCurrency(emp.annualBenefit)}`, 107.95, y + 18, { align: 'center' });
 
-  if (emp.bufferApplied) {
-    doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
-    doc.text('* Includes $5/mo buffer for hourly pay protection', 107.95, y + 24, { align: 'center' });
-  }
-
   y += 35;
 
   doc.setFontSize(11);
@@ -174,7 +168,7 @@ function generateEmployeePage(doc, emp, companyName, payFrequency) {
     doc.setFont('helvetica', 'bold');
     doc.text(`\u2022 ${title}`, 20, y);
     doc.setFont('helvetica', 'normal');
-    doc.text(` \u2014 ${desc}`, 20 + doc.getTextWidth(`\u2022 ${title}`), y);
+    doc.text(`: ${desc}`, 20 + doc.getTextWidth(`\u2022 ${title}`), y);
     y += 6;
   });
 
@@ -195,7 +189,7 @@ export function generatePaycheckComparisons(qualifiedEmployees, companyName, pay
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(80, 80, 80);
   doc.text(companyName, 107.95, 95, { align: 'center' });
-  doc.text(`${qualifiedEmployees.length} Qualified Employees`, 107.95, 108, { align: 'center' });
+  doc.text(`${qualifiedEmployees.length} Full Benefit Employees`, 107.95, 108, { align: 'center' });
 
   addFooter(doc);
 
