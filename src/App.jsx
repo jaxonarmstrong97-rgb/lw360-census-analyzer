@@ -6,8 +6,13 @@ import DataReview from './components/DataReview';
 import ColumnMapper from './components/ColumnMapper';
 import OutputGenerator from './components/OutputGenerator';
 import Assistant from './components/Assistant';
+import { readLaunchParams } from './utils/pipelineHandoff';
 
 export default function App() {
+  // Opened from a client's card in the tracker (?org=<id>&company=<name>): the name fills
+  // the company field and "Save to LW360 pipeline" goes to that client's record.
+  const [launch] = useState(() => readLaunchParams(window.location.search));
+
   // New 3-step flow: upload → confirm → generate
   // With optional "adjust" sub-flow that drops into manual column mapping + data review
   const [step, setStep] = useState(1); // 1=Upload, 2=Confirm, 3=Generate
@@ -123,6 +128,7 @@ export default function App() {
             rawData={uploadResult.rawData}
             aiResult={uploadResult.aiResult}
             fileName={uploadResult.fileName}
+            prefillCompanyName={launch.companyName}
             onGenerate={handleLooksGood}
             onAdjust={handleAdjust}
             onBack={() => { setStep(1); setUploadResult(null); }}
@@ -164,6 +170,8 @@ export default function App() {
           <OutputGenerator
             employees={employees}
             companySetup={companySetup}
+            organizationId={launch.organizationId}
+            linkedCompanyName={launch.companyName}
             onBack={() => {
               if (uploadResult) {
                 setStep(2);

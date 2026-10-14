@@ -2,9 +2,10 @@ import { useState, useMemo } from 'react';
 import { normalizeFilingStatus, normalizePayType, parseNumericValue } from '../utils/columnDetector';
 import { PAY_PERIODS } from '../engine/constants';
 
-export default function SmartConfirmation({ rawData, aiResult, fileName, onGenerate, onAdjust, onBack }) {
+export default function SmartConfirmation({ rawData, aiResult, fileName, prefillCompanyName, onGenerate, onAdjust, onBack }) {
   // Company setup fields — pre-filled from AI if available
-  const [companyName, setCompanyName] = useState(aiResult.company_name || '');
+  // (else from the tracker link's company name, when the analyzer was opened from a client)
+  const [companyName, setCompanyName] = useState(aiResult.company_name || prefillCompanyName || '');
   const [companyType, setCompanyType] = useState(aiResult.company_type || 'Private');
   const [payFrequency, setPayFrequency] = useState(aiResult.detected_pay_frequency || 'Biweekly');
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);

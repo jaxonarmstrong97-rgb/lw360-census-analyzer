@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { calculateAllEmployees } from '../engine/benefitCalculator';
 import { generateEligibilityReport } from '../pdf/eligibilityReport';
 import { generatePaycheckComparisons, generateIndividualPaychecks } from '../pdf/paycheckComparison';
 import { formatCurrency, formatPercent } from '../utils/formatters';
+import { base64FromDataUri, MAX_ATTACHED_PDF_BASE64 } from '../utils/pipelineHandoff';
 import JSZip from 'jszip';
 
-export default function OutputGenerator({ employees, companySetup, onBack, onResults }) {
+export default function OutputGenerator({ employees, companySetup, organizationId, linkedCompanyName, onBack, onResults }) {
   const [genEligibility, setGenEligibility] = useState(true);
   const [genPaychecks, setGenPaychecks] = useState(true);
   const [genRawData, setGenRawData] = useState(false);
@@ -16,31 +17,56 @@ export default function OutputGenerator({ employees, companySetup, onBack, onRes
   const [downloads, setDownloads] = useState([]);
   const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
   const [saveMsg, setSaveMsg] = useState('');
+  // The Benefit Analysis PDF from the last "Generate Reports", sent along when saving.
+  const reportRef = useRef(null); // { doc, fileName } | null
 
   const { companyName, companyType, payFrequency, reportDate } = companySetup;
 
   const handleSaveToPipeline = useCallback(async () => {
     if (!results?.aggregates) return;
     setSaveState('saving'); setSaveMsg('');
+    const body = { companyName, companyType, aggregates: results.aggregates };
+    if (organizationId) body.organizationId = organizationId;
+    // Attach the report PDF when there is one and it fits in a request.
+    let pdfNote = '';
+    if (reportRef.current) {
+      try {
+        const b64 = base64FromDataUri(reportRef.current.doc.output('datauristring'));
+        if (b64 && b64.length <= MAX_ATTACHED_PDF_BASE64) {
+          body.reportPdfBase64 = b64;
+          body.reportFileName = reportRef.current.fileName;
+        } else if (b64) {
+          pdfNote = ' The report PDF is too large to send, so download it and add it to the client in the tracker.';
+        }
+      } catch {
+        pdfNote = ' The report PDF could not be attached, so download it and add it to the client in the tracker.';
+      }
+    }
     try {
       const r = await fetch('/api/save-to-pipeline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyName, companyType, aggregates: results.aggregates }),
+        body: JSON.stringify(body),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { setSaveState('error'); setSaveMsg(data.error || 'Could not save.'); return; }
       setSaveState('saved');
-      setSaveMsg(data.created ? 'Added to the LW360 pipeline.' : 'Updated in the LW360 pipeline.');
+      if (body.reportPdfBase64) {
+        pdfNote = data.pdf_saved
+          ? ' The report PDF is in the client\'s documents.'
+          : ' The report PDF was not saved, so download it and add it to the client in the tracker.';
+      }
+      setSaveMsg((data.created ? 'Added to the LW360 pipeline.' : 'Updated in the LW360 pipeline.') + pdfNote);
     } catch {
       setSaveState('error'); setSaveMsg('Could not reach the pipeline. Try again.');
     }
-  }, [results, companyName, companyType]);
+  }, [results, companyName, companyType, organizationId]);
 
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
     setProgress(0);
     setDownloads([]);
+    reportRef.current = null;
 
     try {
       // Run calculations
@@ -62,6 +88,7 @@ export default function OutputGenerator({ employees, companySetup, onBack, onRes
           url: URL.createObjectURL(eligBlob),
           type: 'Eligibility Report',
         });
+        reportRef.current = { doc: eligDoc, fileName: newDownloads[newDownloads.length - 1].name };
         setProgress(60);
       }
 
@@ -241,7 +268,8 @@ export default function OutputGenerator({ employees, companySetup, onBack, onRes
           </div>
 
           {/* Save this analysis onto the LW360 pipeline (internal handoff). Summary
-              figures only — no per-employee rows, no SSNs. Additive on the platform. */}
+              figures, plus the report PDF kept as a private document on the client.
+              Never SSNs. Additive on the platform. */}
           <div className="mt-5 pt-4 border-t border-green-200 flex items-center gap-3 flex-wrap">
             <button
               onClick={handleSaveToPipeline}
@@ -252,6 +280,13 @@ export default function OutputGenerator({ employees, companySetup, onBack, onRes
             </button>
             {saveMsg && (
               <span className={`text-sm ${saveState === 'error' ? 'text-red-600' : 'text-green-700'}`}>{saveMsg}</span>
+            )}
+            {organizationId && saveState !== 'saved' && (
+              <span className="w-full text-xs text-gray-500">
+                {linkedCompanyName
+                  ? `Saves to ${linkedCompanyName} in the tracker, the client this was opened from.`
+                  : 'Saves to the tracker client this was opened from.'}
+              </span>
             )}
           </div>
         </div>
