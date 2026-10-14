@@ -1058,7 +1058,9 @@ function generateTRSReport(doc, calcResults, companyName, companyType, payFreque
 // ══════════════════════════════════════════════════════════════
 
 export function generateEligibilityReport(calcResults, companyName, companyType, payFrequency, reportDate) {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  // compress: lossless, same pages and text, about 10x smaller. Uncompressed, a report for
+  // more than about 1,800 employees was too big to send with "Save to LW360 pipeline".
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true });
 
   if (companyType === 'Non-FICA' || companyType === 'FICA-School') {
     return generateTRSReport(doc, calcResults, companyName, companyType, payFrequency, reportDate);
